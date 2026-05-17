@@ -1,0 +1,5 @@
+'itadmin@cut.ac.zw':   { role: 'it-admin',          password: 'admin123' },
+  'analyst@cut.ac.zw':   { role: 'security-analyst',   password: 'analyst123' },
+  'compliance@cut.ac.zw':{ role: 'compliance-officer', password: 'comply123' },
+  'auditor@cut.ac.zw':   { role: 'systems-auditor',    password: 'audit123' },
+  'tech@cut.ac.zw':      { role: 'it-technician',      password: 'tech123' },

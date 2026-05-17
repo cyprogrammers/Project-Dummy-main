@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AITRMS | Security Intelligence Hub</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #00f2fe;
+            --secondary: #4facfe;
+            --accent: #f093fb;
+            --danger: #ff416c;
+            --warning: #f7971e;
+            --bg: #0b0e14;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text: #e0e6ed;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(79, 172, 254, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(240, 147, 251, 0.1) 0px, transparent 50%);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding: 2rem;
+        }
+
+        .dashboard {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 1.5rem;
+        }
+
+        header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #4ade80;
+            background: rgba(74, 222, 128, 0.1);
+            padding: 6px 16px;
+            border-radius: 50px;
+            border: 1px solid rgba(74, 222, 128, 0.2);
+        }
+
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #4ade80;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.7; }
+            70% { transform: scale(1.2); opacity: 0.3; }
+            100% { transform: scale(0.95); opacity: 0.7; }
+        }
+
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 1.5rem;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .main-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+            color: #fff;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.5);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 1.5px;
+        }
+
+        .risk-meter {
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            width: 80%;
+            margin: 10px auto;
+            position: relative;
+        }
+
+        .risk-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            border-radius: 2px;
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .threat-feed {
+            height: 500px;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
+        .threat-feed::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .threat-feed::-webkit-scrollbar-thumb {
+            background: var(--glass-border);
+            border-radius: 10px;
+        }
+
+        .event-item {
+            background: rgba(255, 255, 255, 0.02);
+            border-left: 3px solid var(--secondary);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .event-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .event-type {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--primary);
+        }
+
+        .event-time {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.4);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .agent-report {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #b0c4de;
+        }
+
+        .agent-thinking {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            color: var(--accent);
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--secondary), var(--primary));
+            border: none;
+            color: white;
+            padding: 1rem;
+            border-radius: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 10px 20px rgba(79, 172, 254, 0.2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px rgba(79, 172, 254, 0.3);
+            filter: brightness(1.1);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text);
+            box-shadow: none;
+        }
+
+        .btn-outline:hover {
+            background: var(--glass);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .console {
+            background: #000;
+            border-radius: 16px;
+            padding: 1.25rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: #4ade80;
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(74, 222, 128, 0.1);
+        }
+
+        .tag {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .tag.critical { background: rgba(255, 65, 108, 0.2); color: #ff416c; }
+        .tag.agent { background: rgba(161, 140, 209, 0.2); color: #a18cd1; }
+
+        h2 {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+        }
+
+        .loader {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <header>
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M12 8v4M12 16h.01"/>
+                </svg>
+                AITRMS-CORE
+            </div>
+            <div class="status-badge">
+                <div class="pulse"></div>
+                SYSTEM MONITOR ACTIVE
+            </div>
+        </header>
+
+        <main>
+            <div class="main-stats">
+                <div class="card stat-card">
+                    <div class="stat-label">Global Risk Score</div>
+                    <div class="stat-value" id="risk-score">0.00</div>
+                    <div class="risk-meter">
+                        <div class="risk-fill" id="risk-bar" style="width: 0%"></div>
+                    </div>
+                    <div class="tag" style="margin-top: 10px;">Post-LLM Calibration</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">Active Incidents</div>
+                    <div class="stat-value" id="incident-count">0</div>
+                    <div class="tag critical">P1/P2 Multiplier Active</div>
+                </div>
+                <div class="card stat-card">
+                    <div class="stat-label">Analyses Performed</div>
+                    <div class="stat-value" id="analysis-count">12</div>
+                    <div class="tag agent">Lllama-3 Neural Processing</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                    </svg>
+                    Security Intelligence Feed
+                </h2>
+                <div class="threat-feed" id="threat-feed">
+                    <!-- Events will appear here -->
+                    <div class="event-item" style="border-left-color: var(--primary);">
+                        <div class="event-header">
+                            <span class="event-type">System Initialized</span>
+                            <span class="event-time">NOW</span>
+                        </div>
+                        <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7);">All security agents online. Neural anomaly detection baseline established.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <aside class="controls">
+            <div class="card" style="padding: 1.25rem;">
+                <h2>Test Bench</h2>
+                <button class="btn" onclick="simulateAttack()" id="attack-btn">
+                    <div class="loader" id="attack-loader"></div>
+                    <span id="attack-text">Trigger Anomaly Simulation</span>
+                </button>
+                <div style="margin: 1rem 0;"></div>
+                <button class="btn btn-outline" onclick="registerMockIncident()">
+                    Register Mock P1 Incident
+                </button>
+            </div>
+
+            <div class="card">
+                <h2>Processing Console</h2>
+                <div class="console" id="console">
+                    [SYSTEM] Listening for telemetry...
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        function log(msg, type = 'SYSTEM') {
+            const consoleEl = document.getElementById('console');
+            const time = new Date().toLocaleTimeString([], { hour12: false });
+            consoleEl.innerHTML += `<div>[${time}] [${type}] ${msg}</div>`;
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        async function updateStats() {
+            try {
+                const res = await fetch('/api/v1/risk/global_score');
+                const data = await res.json();
+                
+                document.getElementById('risk-score').innerText = data.score.toFixed(2);
+                document.getElementById('incident-count').innerText = data.open_incidents;
+                
+                // Cap bar at 100% for visual sanity
+                const barWidth = Math.min(data.score * 10, 100);
+                document.getElementById('risk-bar').style.width = `${barWidth}%`;
+            } catch (e) {
+                console.error("Failed to fetch stats", e);
+            }
+        }
+
+        async function simulateAttack() {
+            const btn = document.getElementById('attack-btn');
+            const loader = document.getElementById('attack-loader');
+            const txt = document.getElementById('attack-text');
+            
+            btn.disabled = true;
+            loader.style.display = 'block';
+            txt.innerText = 'Analyzing Neural State...';
+            
+            log("Generating telemetry window (60x32)...", "DEBUG");
+            
+            // Mock data window - normally this comes from ELK/Telemetry
+            const mockWindow = Array(60).fill(0).map(() => 
+                Array(32).fill(0).map(() => Math.random() * 0.5)
+            );
+            
+            // Inject some "spikes" to trigger the anomaly detector
+            for(let i=10; i<15; i++) mockWindow[i] = mockWindow[i].map(v => v + 3.0);
+
+            try {
+                const res = await fetch('/api/v1/telemetry/ingest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: "sec-admin-01",
+                        cluster_id: "cluster_admin",
+                        rbac_permissions: ["admin"],
+                        window_data: mockWindow
+                    })
+                });
+
+                const data = await res.json();
+                
+                if (data.status === 'anomaly_detected') {
+                    addThreatEvent(data);
+                    log("Anomaly confirmed by L3 detector.", "ALARM");
+                    log("Agentic report generated.", "AI");
+                } else {
+                    log("Telemetry baseline normal.", "INFO");
+                }
+                
+                updateStats();
+            } catch (e) {
+                log("Processing error: " + e.message, "ERROR");
+            } finally {
+                btn.disabled = false;
+                loader.style.display = 'none';
+                txt.innerText = 'Trigger Anomaly Simulation';
+            }
+        }
+
+        async function registerMockIncident() {
+            log("Registering High-Severity Incident...", "SYSTEM");
+            try {
+                await fetch('/api/v1/risk/register_incident', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ incident_level: "P1" })
+                });
+                updateStats();
+                log("Global multiplier adjusted (+0.5).", "ENGINE");
+            } catch (e) {
+                log("Incident registration failed.", "ERROR");
+            }
+        }
+
+        function addThreatEvent(data) {
+            const feed = document.getElementById('threat-feed');
+            const event = document.createElement('div');
+            event.className = 'event-item';
+            
+            const time = new Date().toLocaleTimeString();
+            const report = data.layer_4_intelligence;
+            
+            event.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type" style="color: var(--danger);">⚠️ CRITICAL ANOMALY</span>
+                    <span class="event-time">${time}</span>
+                </div>
+                <div style="font-size: 0.8rem; margin: 5px 0; color: rgba(255,255,255,0.6);">
+                    MSE: ${data.layer_3_metrics.mse.toFixed(4)} | Method: L3-LSTM-Autoencoder
+                </div>
+                <div class="agent-report">
+                    <div class="agent-thinking">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                        </svg>
+                        Analyst Agent Report
+                    </div>
+                    ${report.summary || "Agent analyzing behavioral patterns..."}
+                    <div style="margin-top: 8px; font-weight: 600; color: var(--accent);">
+                        Recommended: ${report.action_recommendation || "Monitor activity"}
+                    </div>
+                </div>
+            `;
+            
+            feed.prepend(event);
+            
+            // Increment analysis count visually
+            const countEl = document.getElementById('analysis-count');
+            countEl.innerText = parseInt(countEl.innerText) + 1;
+        }
+
+        // Initial update
+        updateStats();
+        // Periodically refresh stats
+        setInterval(updateStats, 5000);
+    </script>
+</body>
+</html>

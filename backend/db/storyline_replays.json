@@ -1,0 +1,692 @@
+[
+  {
+    "storyline_id": "SR-0010",
+    "title": "Anomalous Behavior (17.4x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-05-12T09:58:56.528523+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8698,
+      "threshold": 0.05,
+      "execution_time_ms": 231.11
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-05-12T09:58:14.528523+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8698 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-05-12T09:58:31.528523+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-05-12T09:58:44.528523+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-05-12T09:58:52.528523+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-05-12T09:58:56.528523+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0009",
+    "title": "Anomalous Behavior (17.5x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-05-01T07:15:04.902351+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8766,
+      "threshold": 0.05,
+      "execution_time_ms": 1.69
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-05-01T07:14:22.902351+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8766 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-05-01T07:14:39.902351+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-05-01T07:14:52.902351+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-05-01T07:15:00.902351+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-05-01T07:15:04.902351+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0008",
+    "title": "Anomalous Behavior (17.3x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-05-01T07:14:59.795576+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8658,
+      "threshold": 0.05,
+      "execution_time_ms": 1.67
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-05-01T07:14:17.795576+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8658 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-05-01T07:14:34.795576+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-05-01T07:14:47.795576+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-05-01T07:14:55.795576+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-05-01T07:14:59.795576+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0007",
+    "title": "Anomalous Behavior (17.6x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-05-01T07:14:52.401317+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8777,
+      "threshold": 0.05,
+      "execution_time_ms": 2.02
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-05-01T07:14:10.401317+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8777 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-05-01T07:14:27.401317+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-05-01T07:14:40.401317+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-05-01T07:14:48.401317+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-05-01T07:14:52.401317+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0006",
+    "title": "Anomalous Behavior (17.4x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-05-01T07:14:38.652646+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8677,
+      "threshold": 0.05,
+      "execution_time_ms": 163.74
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-05-01T07:13:56.652646+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8677 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-05-01T07:14:13.652646+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-05-01T07:14:26.652646+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-05-01T07:14:34.652646+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-05-01T07:14:38.652646+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0005",
+    "title": "Anomalous Behavior (18.1x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-04-30T14:00:54.254512+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.9059,
+      "threshold": 0.05,
+      "execution_time_ms": 3.27
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-04-30T14:00:12.254512+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.9059 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-04-30T14:00:29.254512+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-04-30T14:00:42.254512+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-04-30T14:00:50.254512+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-04-30T14:00:54.254512+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0004",
+    "title": "Anomalous Behavior (18.0x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-04-30T13:52:29.807145+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8976,
+      "threshold": 0.05,
+      "execution_time_ms": 12.1
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-04-30T13:51:47.807145+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8976 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-04-30T13:52:04.807145+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-04-30T13:52:17.807145+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-04-30T13:52:25.807145+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-04-30T13:52:29.807145+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0003",
+    "title": "Anomalous Behavior (16.9x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-04-30T13:52:06.111600+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8461,
+      "threshold": 0.05,
+      "execution_time_ms": 7.3
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-04-30T13:51:24.111600+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8461 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-04-30T13:51:41.111600+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-04-30T13:51:54.111600+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-04-30T13:52:02.111600+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-04-30T13:52:06.111600+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0002",
+    "title": "Anomalous Behavior (17.4x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-04-30T13:51:38.339207+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8713,
+      "threshold": 0.05,
+      "execution_time_ms": 1.81
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-04-30T13:50:56.339207+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8713 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-04-30T13:51:13.339207+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-04-30T13:51:26.339207+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-04-30T13:51:34.339207+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-04-30T13:51:38.339207+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "SR-0001",
+    "title": "Anomalous Behavior (17.5x Threshold) targeting CVE-2024-3094",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+    "detected_at": "2026-04-30T13:51:24.200269+00:00",
+    "user_id": "sec-admin-01",
+    "cluster_id": "cluster_admin",
+    "source_ip": "192.168.45.99",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 24.0,
+    "recommended_actions": [
+      "Isolate user session for sec-admin-01",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "CRITICAL",
+      "cluster_admin",
+      "T1059"
+    ],
+    "metrics": {
+      "mse": 0.8732,
+      "threshold": 0.05,
+      "execution_time_ms": 6.99
+    },
+    "steps": [
+      {
+        "phase": "Initial Access",
+        "label": "Suspicious telemetry window formed",
+        "detail": "Privilege escalation attempt after rapid internal discovery and repeated admin surface probing.",
+        "timestamp": "2026-04-30T13:50:42.200269+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Detection",
+        "label": "Behavioral anomaly exceeded cluster baseline",
+        "detail": "MSE 0.8732 crossed the 0.0500 threshold for cluster_admin.",
+        "timestamp": "2026-04-30T13:50:59.200269+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Enrichment",
+        "label": "MITRE and analyst context attached",
+        "detail": "Mapped to T1059 - Command and Scripting Interpreter (Mock Fallback) with RBAC context security-analyst, incident-responder.",
+        "timestamp": "2026-04-30T13:51:12.200269+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Containment",
+        "label": "Containment recommendation generated",
+        "detail": "iptables -A INPUT -s 192.168.45.99 -p tcp --dport 443 -j DROP",
+        "timestamp": "2026-04-30T13:51:20.200269+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Impact",
+        "label": "Risk posture updated",
+        "detail": "Estimated global risk impact: +24.0 points from a current score of 7.4.",
+        "timestamp": "2026-04-30T13:51:24.200269+00:00",
+        "status": "completed"
+      }
+    ]
+  }
+]
