@@ -150,7 +150,7 @@ async def startup_event():
     await rbac_seed()
     logger.info("RBAC seeding complete!")
 
-    # Optional: Start Elasticsearch-dependent tasks only if ES is available
+    # Start Elasticsearch-dependent tasks only if ES is available
     logger.info("Starting background tasks (Elasticsearch-dependent tasks will fail gracefully if ES unavailable)...")
     asyncio.create_task(poll_elasticsearch())
     asyncio.create_task(correlation_storyline_worker())

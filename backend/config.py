@@ -10,7 +10,6 @@ OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL: str    = os.getenv("OLLAMA_MODEL", "llama3")
 
 # ─── PostgreSQL ──────────────────────────────────────────────────────────────
-# Example DSN: "postgresql+asyncpg://user:password@localhost:5432/aitrms"
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://postgres:root@localhost:5432/aitrms"

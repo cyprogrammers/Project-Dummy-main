@@ -339,7 +339,7 @@ async def list_users(
     from sqlalchemy.orm import selectinload
     q = select(RBACUser).options(selectinload(RBACUser.roles))
     if role_id:
-        q = q.join(RBACUserRole).where(RBACUserRole.role_id == role_id)
+        q = q.join(RBACUserRole, RBACUser.id == RBACUserRole.user_id).where(RBACUserRole.role_id == role_id)
     if status:
         q = q.where(RBACUser.status == status)
     if search:
@@ -623,7 +623,12 @@ async def remove_user_from_role(
 @router.get("/roles/{rid}/permissions", response_model=List[PermOut])
 async def get_permissions(rid: int, db: AsyncSession = Depends(get_db),
                            _: RBACUser = Depends(au.get_current_rbac_user)):
-    perms = (await db.execute(select(RBACPermission).where(RBACPermission.role_id == rid))).scalars().all()
+    from sqlalchemy.orm import selectinload
+    perms = (await db.execute(
+        select(RBACPermission)
+        .where(RBACPermission.role_id == rid)
+        .options(selectinload(RBACPermission.module))
+    )).scalars().all()
     result = []
     for p in perms:
         out = PermOut.model_validate(p)
@@ -662,7 +667,10 @@ async def update_permissions(
 @router.get("/roles/{rid}/settings", response_model=SettingsOut)
 async def get_settings(rid: int, db: AsyncSession = Depends(get_db),
                         _: RBACUser = Depends(au.get_current_rbac_user)):
-    r = (await db.execute(select(RBACRole).where(RBACRole.id == rid))).scalars().first()
+    from sqlalchemy.orm import selectinload
+    r = (await db.execute(
+        select(RBACRole).where(RBACRole.id == rid).options(selectinload(RBACRole.settings))
+    )).scalars().first()
     if not r or not r.settings:
         raise HTTPException(404)
     return r.settings
@@ -673,7 +681,10 @@ async def update_settings(
     request: Request, rid: int, body: SettingsUpdate,
     db: AsyncSession = Depends(get_db), actor: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    r = (await db.execute(select(RBACRole).where(RBACRole.id == rid))).scalars().first()
+    from sqlalchemy.orm import selectinload
+    r = (await db.execute(
+        select(RBACRole).where(RBACRole.id == rid).options(selectinload(RBACRole.settings))
+    )).scalars().first()
     if not r:
         raise HTTPException(404)
     if not r.settings:
