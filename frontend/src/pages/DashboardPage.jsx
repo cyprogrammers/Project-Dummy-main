@@ -61,6 +61,15 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   const [removingUser, setRemovingUser] = useState(null)
   const [sessionTimeout, setSessionTimeout] = useState('')
   const [maxFailedAttempts, setMaxFailedAttempts] = useState('')
+  const [newUserFirstName, setNewUserFirstName] = useState('')
+  const [newUserSurname, setNewUserSurname] = useState('')
+  const [newUserEmail, setNewUserEmail] = useState('')
+  const [newUserPassword, setNewUserPassword] = useState('TempPass123!')
+  const [newUserMFA, setNewUserMFA] = useState(false)
+  const [editFirstName, setEditFirstName] = useState('')
+  const [editSurname, setEditSurname] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editStatus, setEditStatus] = useState('active')
   const tabs = ['USERS', 'PERMISSIONS', 'SETTINGS', 'ACTIVITY LOG']
   const tabIds = ['users', 'permissions', 'settings', 'activity-log']
 
@@ -130,12 +139,29 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   }
 
   // CRUD Operations
-  const handleAddUser = async (userData) => {
+  const handleAddUser = async () => {
     try {
+      if (!newUserFirstName || !newUserSurname || !newUserEmail) {
+        alert('Please fill in all required fields')
+        return
+      }
+
       await usersAPI.create({
-        ...userData,
+        first_name: newUserFirstName,
+        surname: newUserSurname,
+        email: newUserEmail,
+        password: newUserPassword,
+        require_mfa: newUserMFA,
         role_ids: roleData ? [roleData.id] : []
       })
+
+      // Clear form
+      setNewUserFirstName('')
+      setNewUserSurname('')
+      setNewUserEmail('')
+      setNewUserPassword('TempPass123!')
+      setNewUserMFA(false)
+
       await fetchRoleData() // Refresh the list
       setShowAddUser(false)
       alert('User added successfully!')
@@ -145,9 +171,22 @@ function RoleProfileView({ role, onBack, dm, styles }) {
     }
   }
 
-  const handleUpdateUser = async (userId, updates) => {
+  const handleUpdateUser = async () => {
+    if (!editingUser) return
+
     try {
-      await usersAPI.update(userId, updates)
+      const updates = {}
+      if (editFirstName && editFirstName !== editingUser.first_name) updates.first_name = editFirstName
+      if (editSurname && editSurname !== editingUser.surname) updates.surname = editSurname
+      if (editEmail && editEmail !== editingUser.email) updates.email = editEmail
+
+      if (Object.keys(updates).length === 0) {
+        alert('No changes made')
+        setShowEditUser(false)
+        return
+      }
+
+      await usersAPI.update(editingUser.id, updates)
       await fetchRoleData() // Refresh the list
       setShowEditUser(false)
       setEditingUser(null)
@@ -157,6 +196,16 @@ function RoleProfileView({ role, onBack, dm, styles }) {
       alert('Failed to update user: ' + err.message)
     }
   }
+
+  // Effect to populate edit form when editingUser changes
+  useEffect(() => {
+    if (editingUser) {
+      setEditFirstName(editingUser.first_name || '')
+      setEditSurname(editingUser.surname || '')
+      setEditEmail(editingUser.email || '')
+      setEditStatus(editingUser.status || 'active')
+    }
+  }, [editingUser])
 
   const handleDeleteUser = async (userId) => {
     try {
@@ -681,7 +730,9 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                   <td style={{ padding: '18px 20px', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button onClick={() => { setEditingUser(user); setShowEditUser(true) }} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, background: 'transparent', color: dm ? '#94a3b8' : '#374151', cursor: 'pointer' }}>Edit</button>
-                      <button style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: '1px solid #f97316', background: 'transparent', color: '#f97316', cursor: 'pointer' }}>Suspend</button>
+                      <button onClick={() => handleToggleUserStatus(user.id, user.status)} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: '1px solid #f97316', background: 'transparent', color: '#f97316', cursor: 'pointer' }}>
+                        {user.status === 'active' ? 'Suspend' : 'Activate'}
+                      </button>
                       <button onClick={() => { setRemovingUser(user); setShowRemoveUser(true) }} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', cursor: 'pointer' }}>Remove</button>
                     </div>
                   </td>
@@ -713,18 +764,24 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             {/* User identity card */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: dm ? '#0f172a' : '#f9fafb', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '12px', padding: '14px 16px', marginBottom: '24px' }}>
               <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #0891b2, #0e7490)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontSize: '14px', fontWeight: '700', color: 'white' }}>{editingUser?.initials || '—'}</span>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: 'white' }}>
+                  {editingUser ? `${editingUser.first_name?.[0] || ''}${editingUser.surname?.[0] || ''}`.toUpperCase() : '—'}
+                </span>
               </div>
               <div>
-                <div style={{ fontSize: '15px', fontWeight: '700', color: dm ? '#f1f5f9' : '#111827', marginBottom: '3px' }}>{editingUser?.name || '—'}</div>
-                <div style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>{editingUser?.id || '—'} &bull; {role}</div>
+                <div style={{ fontSize: '15px', fontWeight: '700', color: dm ? '#f1f5f9' : '#111827', marginBottom: '3px' }}>
+                  {editingUser ? `${editingUser.first_name || ''} ${editingUser.surname || ''}`.trim() : '—'}
+                </div>
+                <div style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>ID: {editingUser?.id || '—'} &bull; {role}</div>
               </div>
             </div>
 
             {/* First Name */}
             <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>First Name</label>
-              <input type="text" defaultValue={editingUser?.firstName || ''}
+              <input type="text"
+                value={editFirstName}
+                onChange={(e) => setEditFirstName(e.target.value)}
                 placeholder="First name"
                 style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
@@ -732,7 +789,9 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             {/* Surname */}
             <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Surname</label>
-              <input type="text" defaultValue={editingUser?.surname || ''}
+              <input type="text"
+                value={editSurname}
+                onChange={(e) => setEditSurname(e.target.value)}
                 placeholder="Surname"
                 style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
@@ -740,20 +799,19 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             {/* Email */}
             <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Email</label>
-              <input type="email" defaultValue={editingUser?.email || ''}
+              <input type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
                 placeholder="user@cut.ac.zw"
                 style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
 
-            {/* Status */}
+            {/* Status - Display only */}
             <div style={{ marginBottom: '28px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Status</label>
-              <select defaultValue={editingUser?.status || ''}
-                style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box', cursor: 'pointer' }}>
-                <option value="">— Select status</option>
-                <option value="active">Active</option>
-                <option value="suspended">Suspended</option>
-              </select>
+              <div style={{ padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#64748b' : '#9ca3af', background: dm ? '#0f172a' : '#f9fafb' }}>
+                {editingUser?.status?.charAt(0).toUpperCase() + editingUser?.status?.slice(1) || 'Unknown'} (Use status toggle in table)
+              </div>
             </div>
 
             {/* Divider */}
@@ -765,7 +823,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 style={{ padding: '10px 24px', background: 'transparent', color: dm ? '#94a3b8' : '#374151', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                 Cancel
               </button>
-              <button onClick={() => setShowEditUser(false)}
+              <button onClick={handleUpdateUser}
                 style={{ padding: '10px 28px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
                 Save Changes
               </button>
@@ -803,7 +861,9 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             <div style={{ textAlign: 'center', marginBottom: '28px' }}>
               <p style={{ fontSize: '16px', fontWeight: '600', color: dm ? '#f1f5f9' : '#111827', margin: '0 0 12px' }}>
                 Remove{' '}
-                <span style={{ color: '#f97316' }}>{removingUser?.name || '—'}</span>
+                <span style={{ color: '#f97316' }}>
+                  {removingUser ? `${removingUser.first_name || ''} ${removingUser.surname || ''}`.trim() : '—'}
+                </span>
                 {' '}from {role}?
               </p>
               <p style={{ fontSize: '13px', color: dm ? '#64748b' : '#9ca3af', lineHeight: '1.7', margin: 0, fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
@@ -821,7 +881,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 style={{ padding: '10px 24px', background: 'transparent', color: dm ? '#94a3b8' : '#374151', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                 Cancel
               </button>
-              <button onClick={() => setShowRemoveUser(false)}
+              <button onClick={async () => { await handleDeleteUser(removingUser?.id); setShowRemoveUser(false) }}
                 style={{ padding: '10px 28px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
                 Remove User
               </button>
@@ -853,6 +913,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>First Name</label>
               <input type="text" placeholder="e.g. Tendai"
+                value={newUserFirstName}
+                onChange={(e) => setNewUserFirstName(e.target.value)}
                 style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
 
@@ -860,6 +922,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Surname</label>
               <input type="text" placeholder="e.g. Moyo"
+                value={newUserSurname}
+                onChange={(e) => setNewUserSurname(e.target.value)}
                 style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
 
@@ -867,6 +931,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Institutional Email</label>
               <input type="email" placeholder="user@cut.ac.zw"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
                 style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
 
@@ -876,9 +942,9 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 <div style={{ fontSize: '14px', fontWeight: '600', color: dm ? '#f1f5f9' : '#111827', marginBottom: '3px' }}>Require MFA</div>
                 <div style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>Mandatory for IT Admin &amp; Security Analyst</div>
               </div>
-              <button onClick={() => setMfaEnabled(!mfaEnabled)}
-                style={{ width: '46px', height: '26px', borderRadius: '999px', border: 'none', cursor: 'pointer', background: mfaEnabled ? '#0891b2' : (dm ? '#334155' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
-                <span style={{ position: 'absolute', top: '3px', left: mfaEnabled ? '23px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+              <button onClick={() => setNewUserMFA(!newUserMFA)}
+                style={{ width: '46px', height: '26px', borderRadius: '999px', border: 'none', cursor: 'pointer', background: newUserMFA ? '#0891b2' : (dm ? '#334155' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+                <span style={{ position: 'absolute', top: '3px', left: newUserMFA ? '23px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: 'white', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
               </button>
             </div>
 
@@ -891,7 +957,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 style={{ padding: '10px 24px', background: 'transparent', color: dm ? '#94a3b8' : '#374151', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
                 Cancel
               </button>
-              <button onClick={() => setShowAddUser(false)}
+              <button onClick={handleAddUser}
                 style={{ padding: '10px 28px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
                 Add User
               </button>
