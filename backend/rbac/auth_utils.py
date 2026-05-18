@@ -182,14 +182,14 @@ async def log_activity(
     return entry
 
 
-# ─── Request helpers ──────────────────────────────────────────────────────────
+# ─── Request helpers ────
 
 def get_client_ip(request: Request) -> str:
     fwd = request.headers.get("X-Forwarded-For")
     return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "unknown")
 
 
-# ─── FastAPI dependency ───────────────────────────────────────────────────────
+# ─── FastAPI dependency ─────────
 
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import Depends

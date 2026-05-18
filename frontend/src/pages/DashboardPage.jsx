@@ -254,11 +254,11 @@ function RoleProfileView({ role, onBack, dm, styles }) {
           <div>
             <h2 style={{ fontSize: '22px', fontWeight: '700', color: dm ? '#f1f5f9' : '#111827', margin: '0 0 6px' }}>{role}</h2>
             <div style={{ display: 'flex', gap: '10px', fontSize: '13px', fontWeight: '500' }}>
-              <span style={{ color: '#16a34a' }}>— active</span>
+              <span style={{ color: '#16a34a' }}>{users.filter(u => u.status === 'active').length} active</span>
               <span style={{ color: dm ? '#64748b' : '#9ca3af' }}>·</span>
-              <span style={{ color: '#ef4444' }}>— suspended</span>
+              <span style={{ color: '#ef4444' }}>{users.filter(u => u.status === 'suspended').length} suspended</span>
               <span style={{ color: dm ? '#64748b' : '#9ca3af' }}>·</span>
-              <span style={{ color: '#f97316' }}>— MFA enabled</span>
+              <span style={{ color: '#f97316' }}>{users.filter(u => u.mfa_enabled).length} MFA enabled</span>
             </div>
           </div>
         </div>
