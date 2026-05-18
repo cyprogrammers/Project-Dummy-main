@@ -233,8 +233,11 @@ async def get_current_rbac_user(
     await db.commit()
 
     # Fetch user
+    from sqlalchemy.orm import selectinload
     user_result = await db.execute(
-        select(RBACUser).where(RBACUser.id == int(payload["sub"]))
+        select(RBACUser)
+        .where(RBACUser.id == int(payload["sub"]))
+        .options(selectinload(RBACUser.roles))
     )
     user = user_result.scalars().first()
     if not user:

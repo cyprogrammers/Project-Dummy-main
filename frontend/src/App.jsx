@@ -5,18 +5,42 @@
  * onLogin(role, user) now receives the full user object from the API.
  * onLogout calls the real API endpoint via authService.logout().
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import SecurityAnalystPage from './pages/SecurityAnalystPage'
 import ComplianceOfficerPage from './pages/ComplianceOfficerPage'
 import ITTechnicianPage from './pages/ITTechnicianPage'
 import SystemAuditorPage from './pages/SystemAuditorPage'
-import { logout as apiLogout } from './services/authService'
+import { logout as apiLogout, getMe } from './services/authService'
 
 function App() {
   const [userRole, setUserRole] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const token = sessionStorage.getItem('rbac_access')
+        if (token) {
+          // Try to get current user to validate token
+          const user = await getMe()
+          const roleKey = user.roles?.[0]?.frontend_key || 'it-admin'
+          setUserRole(roleKey)
+          setCurrentUser(user)
+        }
+      } catch (err) {
+        // Token invalid or expired, clear it
+        sessionStorage.removeItem('rbac_access')
+        sessionStorage.removeItem('rbac_refresh')
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+    checkAuth()
+  }, [])
 
   const handleLogin = (role, user) => {
     setUserRole(role)
@@ -29,6 +53,15 @@ function App() {
     } catch (_) { /* already expired is fine */ }
     setUserRole(null)
     setCurrentUser(null)
+  }
+
+  // Show loading while checking for existing session
+  if (isCheckingAuth) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'Inter, sans-serif', color: '#6b7280' }}>
+        <div>Checking session...</div>
+      </div>
+    )
   }
 
   if (!userRole) {

@@ -59,6 +59,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   const [editingUser, setEditingUser] = useState(null)
   const [showRemoveUser, setShowRemoveUser] = useState(false)
   const [removingUser, setRemovingUser] = useState(null)
+  const [sessionTimeout, setSessionTimeout] = useState('')
+  const [maxFailedAttempts, setMaxFailedAttempts] = useState('')
   const tabs = ['USERS', 'PERMISSIONS', 'SETTINGS', 'ACTIVITY LOG']
   const tabIds = ['users', 'permissions', 'settings', 'activity-log']
 
@@ -113,6 +115,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
         setEmailAlertLogin(settings.email_alert_on_login)
         setAlertRoleChange(settings.alert_on_role_change)
         setWeeklyReport(settings.weekly_access_report)
+        setSessionTimeout(settings.session_timeout_minutes || '')
+        setMaxFailedAttempts(settings.max_failed_login_attempts || '')
       } catch (err) {
         console.error('Error fetching role settings:', err)
       }
@@ -188,50 +192,59 @@ function RoleProfileView({ role, onBack, dm, styles }) {
     }
   }
 
-  const permissionsBase = {
-    'Backup Engine': { read: false, write: false, delete: false, admin: false },
-    'RBAC Service': { read: false, write: false, delete: false, admin: false },
-    'Security Logging': { read: false, write: false, delete: false, admin: false },
-    'File Access Detector': { read: false, write: false, delete: false, admin: false },
-    'Risk Assessment': { read: false, write: false, delete: false, admin: false },
-    'Compliance Manager': { read: false, write: false, delete: false, admin: false },
-  }
-
-  const getDefaultPermissions = (currentRole) => {
-    if (currentRole === 'IT Technician') {
-      return {
-        ...permissionsBase,
-        'Backup Engine': { read: true, write: true, delete: false, admin: false },
-        'RBAC Service': { read: true, write: false, delete: false, admin: false },
-        'Security Logging': { read: true, write: false, delete: false, admin: false },
-        'File Access Detector': { read: true, write: true, delete: false, admin: false },
-        'Risk Assessment': { read: true, write: false, delete: false, admin: false },
+  const handleSaveSettings = async () => {
+    if (!roleData) return
+    try {
+      const updates = {
+        require_mfa: mfaEnabled,
+        pam_sessions_enabled: pamEnabled,
+        restrict_working_hours: restrictHours,
+        geo_restriction_enabled: geoRestrict,
+        allow_concurrent_sessions: concurrentSessions,
+        email_alert_on_login: emailAlertLogin,
+        alert_on_role_change: alertRoleChange,
+        weekly_access_report: weeklyReport,
       }
+      if (sessionTimeout) updates.session_timeout_minutes = parseInt(sessionTimeout)
+      if (maxFailedAttempts) updates.max_failed_login_attempts = parseInt(maxFailedAttempts)
+
+      await rolesAPI.updateSettings(roleData.id, updates)
+      alert('Settings saved successfully!')
+      await fetchRoleData()
+    } catch (err) {
+      console.error('Error saving settings:', err)
+      alert('Failed to save settings: ' + err.message)
     }
-    return permissionsBase
   }
 
-  const [permissions, setPermissions] = useState(() => getDefaultPermissions(role))
-  const [permissionsSaved, setPermissionsSaved] = useState(false)
+  const handleSavePermissions = async () => {
+    if (!roleData) return
+    try {
+      // Convert permissions object to API format
+      const permissionsArray = rolePermissions.map(perm => ({
+        module_id: perm.module_id,
+        can_read: perm.can_read,
+        can_write: perm.can_write,
+        can_delete: perm.can_delete,
+        can_admin: perm.can_admin,
+      }))
 
-  useEffect(() => {
-    setPermissions(getDefaultPermissions(role))
-    setPermissionsSaved(false)
-  }, [role])
+      await rolesAPI.updatePerms(roleData.id, { permissions: permissionsArray })
+      alert('Permissions saved successfully!')
+      await fetchRoleData()
+    } catch (err) {
+      console.error('Error saving permissions:', err)
+      alert('Failed to save permissions: ' + err.message)
+    }
+  }
 
-  const togglePermission = (module, perm) => {
-    setPermissions((prev) => ({
-      ...prev,
-      [module]: {
-        ...prev[module],
-        [perm]: !prev[module][perm],
-      },
+  const handleTogglePermission = (moduleId, permission) => {
+    setRolePermissions(prev => prev.map(perm => {
+      if (perm.module_id === moduleId) {
+        return { ...perm, [`can_${permission}`]: !perm[`can_${permission}`] }
+      }
+      return perm
     }))
-  }
-
-  const handleSavePermissions = () => {
-    setPermissionsSaved(true)
-    window.setTimeout(() => setPermissionsSaved(false), 1600)
   }
 
   return (
@@ -349,13 +362,17 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(permissions).map(([module, perms], i) => (
-                  <tr key={module} style={{ borderBottom: i < Object.keys(permissions).length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
-                    <td style={{ padding: '18px 16px', fontSize: '14px', fontWeight: '600', color: '#0891b2', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>{module}</td>
-                    {['read', 'write', 'delete', 'admin'].map((perm) => (
-                      <td key={perm} style={{ padding: '18px 16px', textAlign: 'center' }}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, background: perms[perm] ? (dm ? '#164e63' : '#dbeafe') : 'transparent', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={perms[perm]} onChange={() => togglePermission(module, perm)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+                {loading ? (
+                  <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading permissions...</td></tr>
+                ) : rolePermissions.length === 0 ? (
+                  <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No permissions found</td></tr>
+                ) : rolePermissions.map((perm, i) => (
+                  <tr key={perm.module_id} style={{ borderBottom: i < rolePermissions.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
+                    <td style={{ padding: '18px 16px', fontSize: '14px', fontWeight: '600', color: '#0891b2', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>{perm.module_name}</td>
+                    {['read', 'write', 'delete', 'admin'].map((permType) => (
+                      <td key={permType} style={{ padding: '18px 16px', textAlign: 'center' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, background: perm[`can_${permType}`] ? (dm ? '#164e63' : '#dbeafe') : 'transparent', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={perm[`can_${permType}`]} onChange={() => handleTogglePermission(perm.module_id, permType)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
                         </label>
                       </td>
                     ))}
@@ -369,7 +386,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 Selected permissions are enabled for <strong>{role}</strong>. Tick or untick options as needed and click Save Changes to retain them.
               </div>
               <button onClick={handleSavePermissions} style={{ width: '180px', padding: '12px 18px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-                {permissionsSaved ? 'Saved' : 'Save Changes'}
+                Save Changes
               </button>
             </div>
 
@@ -428,6 +445,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                   <input
                     type="number"
                     placeholder="—"
+                    value={sessionTimeout}
+                    onChange={(e) => setSessionTimeout(e.target.value)}
                     style={{ width: '80px', padding: '8px 12px', borderRadius: '8px', border: `1px solid ${dm ? '#475569' : '#d1d5db'}`, background: dm ? '#0f172a' : '#f9fafb', color: dm ? '#f1f5f9' : '#111827', fontSize: '14px', textAlign: 'center', outline: 'none', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}
                   />
                 </div>
@@ -443,6 +462,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                   <input
                     type="number"
                     placeholder="—"
+                    value={maxFailedAttempts}
+                    onChange={(e) => setMaxFailedAttempts(e.target.value)}
                     style={{ width: '80px', padding: '8px 12px', borderRadius: '8px', border: `1px solid ${dm ? '#475569' : '#d1d5db'}`, background: dm ? '#0f172a' : '#f9fafb', color: dm ? '#f1f5f9' : '#111827', fontSize: '14px', textAlign: 'center', outline: 'none', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}
                   />
                 </div>
@@ -511,7 +532,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
 
             {/* SAVE SETTINGS Button */}
             <div style={{ marginTop: '24px' }}>
-              <button style={{ padding: '12px 28px', background: 'transparent', color: '#0891b2', border: '2px solid #0891b2', borderRadius: '8px', fontSize: '13px', fontWeight: '700', letterSpacing: '1px', fontFamily: "'Inter', 'Segoe UI', sans-serif", cursor: 'pointer' }}>
+              <button onClick={handleSaveSettings} style={{ padding: '12px 28px', background: 'transparent', color: '#0891b2', border: '2px solid #0891b2', borderRadius: '8px', fontSize: '13px', fontWeight: '700', letterSpacing: '1px', fontFamily: "'Inter', 'Segoe UI', sans-serif", cursor: 'pointer' }}>
                 SAVE SETTINGS
               </button>
             </div>
