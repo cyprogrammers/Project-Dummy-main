@@ -19,7 +19,7 @@ from rbac import auth_utils as au
 from rbac.models import (
     ActivityAction, ActivityResult,
     RBACActivityLog, RBACModule, RBACPermission, RBACRole, RBACRoleSettings,
-    RBACSession, RBACUser, RBACUserRole, UserStatus, MFARequirement,
+    RBACSession, RBACUser, RBACUserPermission, RBACUserRole, UserStatus, MFARequirement,
 )
 
 router = APIRouter(prefix="/api/v1/rbac", tags=["RBAC"])
@@ -115,6 +115,16 @@ class PermUpdateItem(BaseModel):
 
 class BulkPermUpdate(BaseModel):
     permissions: List[PermUpdateItem]
+
+class UserPermOut(BaseModel):
+    module_id: int; module_name: str = ""; can_read: bool; can_write: bool; can_delete: bool; can_admin: bool; is_override: bool = False
+    model_config = {"from_attributes": True}
+
+class UserPermUpdateItem(BaseModel):
+    module_id: int; can_read: bool = False; can_write: bool = False; can_delete: bool = False; can_admin: bool = False
+
+class BulkUserPermUpdate(BaseModel):
+    permissions: List[UserPermUpdateItem]
 
 class SettingsUpdate(BaseModel):
     require_mfa: Optional[bool] = None
@@ -219,6 +229,17 @@ async def login(
             await au.log_activity(db, ActivityAction.login_failed, ActivityResult.failed,
                                    target_user=user, details={"reason": "bad MFA"}, ip_address=ip)
             raise HTTPException(401, "Invalid MFA code")
+
+    # Check user-level permission overrides — if admin revoked all read access, block login
+    user_perms = (await db.execute(
+        select(RBACUserPermission).where(RBACUserPermission.user_id == user.id)
+    )).scalars().all()
+    if user_perms and not any(p.can_read for p in user_perms):
+        await au.log_activity(db, ActivityAction.login_failed, ActivityResult.denied,
+                               target_user=user,
+                               details={"email": user.email, "reason": "access revoked by administrator"},
+                               ip_address=ip)
+        raise HTTPException(403, "Access revoked — contact your IT Administrator")
 
     # Success — reset counter, build session
     from datetime import datetime, timezone
@@ -506,6 +527,132 @@ async def change_password(
     await au.log_activity(db, ActivityAction.password_change, ActivityResult.success,
                            actor=actor, target_user=u, ip_address=au.get_client_ip(request))
     return Msg(message="Password updated")
+
+
+# ── User-level permission overrides ──────────────────────────────────────────
+
+@router.get("/users/{uid}/permissions", response_model=List[UserPermOut])
+async def get_user_permissions(
+    uid: int,
+    db: AsyncSession = Depends(get_db),
+    _: RBACUser = Depends(au.get_current_rbac_user),
+):
+    """Return effective permissions for a user: role defaults merged with any user-specific overrides."""
+    u = (await db.execute(
+        select(RBACUser).where(RBACUser.id == uid).options(selectinload(RBACUser.roles))
+    )).scalars().first()
+    if not u:
+        raise HTTPException(404, "User not found")
+
+    modules = (await db.execute(select(RBACModule).where(RBACModule.is_active == True))).scalars().all()
+
+    # Build role-level baseline (OR of all roles the user belongs to)
+    role_ids = [r.id for r in u.roles]
+    role_perms: dict[int, dict] = {}
+    if role_ids:
+        rp_rows = (await db.execute(
+            select(RBACPermission).where(RBACPermission.role_id.in_(role_ids))
+            .options(selectinload(RBACPermission.module))
+        )).scalars().all()
+        for rp in rp_rows:
+            existing = role_perms.get(rp.module_id, {})
+            role_perms[rp.module_id] = {
+                "can_read":   existing.get("can_read",   False) or rp.can_read,
+                "can_write":  existing.get("can_write",  False) or rp.can_write,
+                "can_delete": existing.get("can_delete", False) or rp.can_delete,
+                "can_admin":  existing.get("can_admin",  False) or rp.can_admin,
+            }
+
+    # Load user-specific overrides
+    up_rows = (await db.execute(
+        select(RBACUserPermission).where(RBACUserPermission.user_id == uid)
+    )).scalars().all()
+    user_overrides = {up.module_id: up for up in up_rows}
+
+    result = []
+    for m in modules:
+        override = user_overrides.get(m.id)
+        if override:
+            result.append(UserPermOut(
+                module_id=m.id, module_name=m.name,
+                can_read=override.can_read, can_write=override.can_write,
+                can_delete=override.can_delete, can_admin=override.can_admin,
+                is_override=True,
+            ))
+        else:
+            base = role_perms.get(m.id, {})
+            result.append(UserPermOut(
+                module_id=m.id, module_name=m.name,
+                can_read=base.get("can_read", False),
+                can_write=base.get("can_write", False),
+                can_delete=base.get("can_delete", False),
+                can_admin=base.get("can_admin", False),
+                is_override=False,
+            ))
+    return result
+
+
+@router.put("/users/{uid}/permissions", response_model=Msg)
+async def update_user_permissions(
+    request: Request, uid: int, body: BulkUserPermUpdate,
+    db: AsyncSession = Depends(get_db), actor: RBACUser = Depends(au.get_current_rbac_user),
+):
+    """Save user-specific permission overrides (upsert per module)."""
+    u = (await db.execute(select(RBACUser).where(RBACUser.id == uid))).scalars().first()
+    if not u:
+        raise HTTPException(404, "User not found")
+
+    updated = []
+    for pu in body.permissions:
+        existing = (await db.execute(
+            select(RBACUserPermission).where(
+                RBACUserPermission.user_id == uid,
+                RBACUserPermission.module_id == pu.module_id,
+            )
+        )).scalars().first()
+        if existing:
+            existing.can_read   = pu.can_read
+            existing.can_write  = pu.can_write
+            existing.can_delete = pu.can_delete
+            existing.can_admin  = pu.can_admin
+            existing.updated_by = actor.id
+        else:
+            db.add(RBACUserPermission(
+                user_id=uid, module_id=pu.module_id,
+                can_read=pu.can_read, can_write=pu.can_write,
+                can_delete=pu.can_delete, can_admin=pu.can_admin,
+                updated_by=actor.id,
+            ))
+        updated.append(pu.module_id)
+
+    await db.commit()
+
+    # Auto-suspend if all read access revoked; auto-reactivate if at least one module restored
+    has_read = any(pu.can_read for pu in body.permissions)
+    status_note = ""
+    if body.permissions and not has_read and u.status == UserStatus.active:
+        u.status = UserStatus.suspended
+        await db.commit()
+        await au.log_activity(db, ActivityAction.status_change, ActivityResult.enforced,
+                               actor=actor, target_user=u,
+                               details={"reason": "All module read permissions revoked", "auto": True},
+                               ip_address=au.get_client_ip(request))
+        status_note = " User suspended — all read access revoked."
+    elif has_read and u.status == UserStatus.suspended:
+        u.status = UserStatus.active
+        u.failed_login_attempts = 0
+        await db.commit()
+        await au.log_activity(db, ActivityAction.status_change, ActivityResult.success,
+                               actor=actor, target_user=u,
+                               details={"reason": "Module read permissions restored", "auto": True},
+                               ip_address=au.get_client_ip(request))
+        status_note = " User reactivated — read access restored."
+
+    await au.log_activity(db, ActivityAction.perm_update, ActivityResult.success,
+                           actor=actor, target_user=u,
+                           details={"modules": updated, "type": "user_override"},
+                           ip_address=au.get_client_ip(request))
+    return Msg(message=f"Updated {len(updated)} module permissions for user {u.email}.{status_note}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

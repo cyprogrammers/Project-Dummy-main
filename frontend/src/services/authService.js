@@ -125,6 +125,8 @@ export const users = {
   sessions: (id) => apiCall(`/users/${id}/sessions`),
   activity: (id) => apiCall(`/users/${id}/activity`),
   stats:    ()   => apiCall("/users/stats"),
+  getPermissions:    (id)       => apiCall(`/users/${id}/permissions`),
+  updatePermissions: (id, body) => apiCall(`/users/${id}/permissions`, { method: "PUT", body: JSON.stringify(body) }),
 };
 
 // ─── Roles CRUD ───────────────────────────────────────────────────────────────

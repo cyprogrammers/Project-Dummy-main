@@ -157,6 +157,24 @@ class RBACPermission(Base):
     module = relationship("RBACModule", back_populates="permissions")
 
 
+class RBACUserPermission(Base):
+    """Per-user module permission overrides — take precedence over role-level permissions."""
+    __tablename__ = "rbac_user_permissions"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("rbac_users.id",   ondelete="CASCADE"), nullable=False)
+    module_id  = Column(Integer, ForeignKey("rbac_modules.id", ondelete="CASCADE"), nullable=False)
+    can_read   = Column(Boolean, default=False)
+    can_write  = Column(Boolean, default=False)
+    can_delete = Column(Boolean, default=False)
+    can_admin  = Column(Boolean, default=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    updated_by = Column(Integer, ForeignKey("rbac_users.id", ondelete="SET NULL"), nullable=True)
+
+    user   = relationship("RBACUser",   foreign_keys=[user_id])
+    module = relationship("RBACModule")
+
+
 class RBACRoleSettings(Base):
     """Authentication policy and access-scope settings per role."""
     __tablename__ = "rbac_role_settings"

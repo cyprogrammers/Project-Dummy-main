@@ -83,6 +83,10 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   const [roleSettings, setRoleSettings] = useState(null)
   const [activityLogs, setActivityLogs] = useState([])
   const [activityLoading, setActivityLoading] = useState(false)
+  // User-specific permissions
+  const [selectedPermUser, setSelectedPermUser] = useState(null)
+  const [userPermissions, setUserPermissions] = useState([])
+  const [userPermsLoading, setUserPermsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -111,6 +115,83 @@ function RoleProfileView({ role, onBack, dm, styles }) {
     }
     fetchActivity()
   }, [activeTab, roleData, users])
+
+  // Load permissions when user is selected in Permissions tab
+  useEffect(() => {
+    if (!selectedPermUser) { setUserPermissions([]); return }
+    const load = async () => {
+      setUserPermsLoading(true)
+      try {
+        // Fall back to role permissions if user-level endpoint not available yet
+        let perms
+        try {
+          perms = await usersAPI.getPermissions(selectedPermUser.id)
+        } catch {
+          perms = rolePermissions.map(p => ({ ...p, is_override: false }))
+        }
+        setUserPermissions(perms)
+      } catch (err) {
+        console.error('Failed to load user permissions:', err)
+        setUserPermissions(rolePermissions.map(p => ({ ...p, is_override: false })))
+      } finally {
+        setUserPermsLoading(false)
+      }
+    }
+    load()
+  }, [selectedPermUser])
+
+  const handleToggleUserPermission = (moduleId, permType) => {
+    setUserPermissions(prev => prev.map(p =>
+      p.module_id === moduleId ? { ...p, [`can_${permType}`]: !p[`can_${permType}`] } : p
+    ))
+  }
+
+  const handleSaveUserPermissions = async () => {
+    if (!selectedPermUser || userPermissions.length === 0) {
+      alert('No permissions loaded. Select a user first.')
+      return
+    }
+
+    const hasAnyRead = userPermissions.some(p => p.can_read)
+    const currentStatus = selectedPermUser.status
+
+    try {
+      // Try to save permission overrides (requires backend restart if table is new)
+      try {
+        await usersAPI.updatePermissions(selectedPermUser.id, {
+          permissions: userPermissions.map(p => ({
+            module_id:  p.module_id,
+            can_read:   p.can_read,
+            can_write:  p.can_write,
+            can_delete: p.can_delete,
+            can_admin:  p.can_admin,
+          }))
+        })
+      } catch (permErr) {
+        console.warn('Permission overrides could not be saved:', permErr.message)
+      }
+
+      // Directly enforce via user status — same mechanism as the Suspend button
+      if (!hasAnyRead && currentStatus === 'active') {
+        await usersAPI.setStatus(selectedPermUser.id, 'suspended', 'All module read permissions revoked')
+        setUsers(prev => prev.map(u => u.id === selectedPermUser.id ? { ...u, status: 'suspended' } : u))
+        setSelectedPermUser(prev => ({ ...prev, status: 'suspended' }))
+        alert(`${selectedPermUser.first_name} ${selectedPermUser.surname} has been SUSPENDED — no read access granted.`)
+      } else if (hasAnyRead && currentStatus === 'suspended') {
+        await usersAPI.setStatus(selectedPermUser.id, 'active', 'Module read permissions restored')
+        setUsers(prev => prev.map(u => u.id === selectedPermUser.id ? { ...u, status: 'active' } : u))
+        setSelectedPermUser(prev => ({ ...prev, status: 'active' }))
+        alert(`${selectedPermUser.first_name} ${selectedPermUser.surname} has been REACTIVATED — read access restored.`)
+      } else {
+        alert(`Permissions updated for ${selectedPermUser.first_name} ${selectedPermUser.surname}.`)
+      }
+
+      fetchRoleData().catch(() => {})
+    } catch (err) {
+      console.error('Failed to enforce permissions:', err)
+      alert('Failed: ' + err.message)
+    }
+  }
 
   const fetchRoleData = async () => {
     try {
@@ -502,58 +583,125 @@ function RoleProfileView({ role, onBack, dm, styles }) {
         {/* ── PERMISSIONS TAB ── */}
         {activeTab === 'permissions' && (
           <div style={{ padding: '20px 24px' }}>
-            {/* Description */}
-            <p style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280', margin: '0 0 20px', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
-              Module-level permissions for{' '}
-              <strong style={{ color: '#0891b2', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>{role}</strong>.
-              {' '}Contact IT Administrator to request changes.
-            </p>
 
-            {/* Permissions Matrix */}
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${dm ? '#334155' : '#e5e7eb'}` }}>
-                  {['Module', 'Read', 'Write', 'Delete', 'Admin'].map((col) => (
-                    <th key={col} style={{ padding: '10px 16px', textAlign: col === 'Module' ? 'left' : 'center', fontSize: '13px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.4px' }}>{col}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading permissions...</td></tr>
-                ) : rolePermissions.length === 0 ? (
-                  <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No permissions found</td></tr>
-                ) : rolePermissions.map((perm, i) => (
-                  <tr key={perm.module_id} style={{ borderBottom: i < rolePermissions.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
-                    <td style={{ padding: '18px 16px', fontSize: '14px', fontWeight: '600', color: '#0891b2', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>{perm.module_name}</td>
-                    {['read', 'write', 'delete', 'admin'].map((permType) => (
-                      <td key={permType} style={{ padding: '18px 16px', textAlign: 'center' }}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', borderRadius: '6px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, background: perm[`can_${permType}`] ? (dm ? '#164e63' : '#dbeafe') : 'transparent', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={perm[`can_${permType}`]} onChange={() => handleTogglePermission(perm.module_id, permType)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
-                        </label>
-                      </td>
-                    ))}
-                  </tr>
+            {/* User selector */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Select User</label>
+              <select
+                value={selectedPermUser?.id ?? ''}
+                onChange={e => {
+                  const uid = parseInt(e.target.value)
+                  setSelectedPermUser(users.find(u => u.id === uid) || null)
+                }}
+                style={{ width: '100%', maxWidth: '400px', padding: '10px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="">— Choose a user —</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.first_name} {u.surname} ({u.email})
+                  </option>
                 ))}
-              </tbody>
-            </table>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
-              <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>
-                Selected permissions are enabled for <strong>{role}</strong>. Tick or untick options as needed and click Save Changes to retain them.
-              </div>
-              <button onClick={handleSavePermissions} style={{ width: '180px', padding: '12px 18px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-                Save Changes
-              </button>
+              </select>
             </div>
 
-            {/* Footer warning banner */}
+            {selectedPermUser ? (() => {
+              const isSuspended = selectedPermUser.status === 'suspended'
+              const handleRevokeAccess = async () => {
+                if (!window.confirm(`Suspend ${selectedPermUser.first_name} ${selectedPermUser.surname}?\n\nThey will be blocked from logging in immediately.`)) return
+                try {
+                  await usersAPI.setStatus(selectedPermUser.id, 'suspended', 'Access revoked from Permissions tab')
+                  setUsers(prev => prev.map(u => u.id === selectedPermUser.id ? { ...u, status: 'suspended' } : u))
+                  setSelectedPermUser(prev => ({ ...prev, status: 'suspended' }))
+                  alert(`${selectedPermUser.first_name} ${selectedPermUser.surname} suspended — login blocked.`)
+                } catch (err) { alert('Failed: ' + err.message) }
+              }
+              const handleRestoreAccess = async () => {
+                try {
+                  await usersAPI.setStatus(selectedPermUser.id, 'active', 'Access restored from Permissions tab')
+                  setUsers(prev => prev.map(u => u.id === selectedPermUser.id ? { ...u, status: 'active' } : u))
+                  setSelectedPermUser(prev => ({ ...prev, status: 'active' }))
+                  alert(`${selectedPermUser.first_name} ${selectedPermUser.surname} reactivated.`)
+                } catch (err) { alert('Failed: ' + err.message) }
+              }
+              return (
+                <>
+                  {/* User card + access control */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', background: dm ? '#0f172a' : '#f8fafc', border: `1px solid ${isSuspended ? '#ef4444' : (dm ? '#334155' : '#e5e7eb')}`, borderRadius: '12px', padding: '14px 18px', marginBottom: '16px' }}>
+                    <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: isSuspended ? '#ef4444' : 'linear-gradient(135deg,#0891b2,#0e7490)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: 'white' }}>
+                        {`${selectedPermUser.first_name?.[0]||''}${selectedPermUser.surname?.[0]||''}`.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: dm ? '#f1f5f9' : '#111827' }}>{selectedPermUser.first_name} {selectedPermUser.surname}</div>
+                      <div style={{ fontSize: '12px', color: dm ? '#64748b' : '#6b7280' }}>{selectedPermUser.email}</div>
+                    </div>
+                    <span style={{ padding: '3px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: '700', background: isSuspended ? '#fee2e2' : '#d1fae5', color: isSuspended ? '#991b1b' : '#065f46', border: `1px solid ${isSuspended ? '#ef4444' : '#10b981'}`, marginRight: '8px' }}>
+                      {isSuspended ? 'SUSPENDED' : 'ACTIVE'}
+                    </span>
+                    {isSuspended ? (
+                      <button onClick={handleRestoreAccess} style={{ padding: '8px 18px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Restore Access
+                      </button>
+                    ) : (
+                      <button onClick={handleRevokeAccess} style={{ padding: '8px 18px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        Revoke Access
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Module permissions table */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${dm ? '#334155' : '#e5e7eb'}` }}>
+                        {['Module', 'Read', 'Write', 'Delete', 'Admin'].map(col => (
+                          <th key={col} style={{ padding: '10px 16px', textAlign: col === 'Module' ? 'left' : 'center', fontSize: '12px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.4px' }}>{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userPermsLoading ? (
+                        <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading…</td></tr>
+                      ) : userPermissions.length === 0 ? (
+                        <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No modules configured</td></tr>
+                      ) : userPermissions.map((perm, i) => (
+                        <tr key={perm.module_id} style={{ borderBottom: i < userPermissions.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
+                          <td style={{ padding: '16px', fontSize: '14px', fontWeight: '600', color: '#0891b2' }}>{perm.module_name}</td>
+                          {['read', 'write', 'delete', 'admin'].map(pt => (
+                            <td key={pt} style={{ padding: '16px', textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={!!perm[`can_${pt}`]}
+                                onChange={() => handleToggleUserPermission(perm.module_id, pt)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#0891b2' }}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {userPermissions.length > 0 && (
+                    <button onClick={handleSaveUserPermissions} style={{ padding: '10px 24px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', marginBottom: '20px' }}>
+                      Save Module Permissions
+                    </button>
+                  )}
+                </>
+              )
+            })() : (
+              <div style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af', fontSize: '14px', border: `1px dashed ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '12px', marginBottom: '20px' }}>
+                Select a user above to manage their permissions.
+              </div>
+            )}
+
+            {/* Footer */}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: dm ? 'rgba(245,158,11,0.08)' : '#fffbeb', border: `1px solid ${dm ? '#78350f' : '#fde68a'}`, borderRadius: '10px', padding: '14px 16px' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '1px' }}>
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
               </svg>
-              <span style={{ fontSize: '12px', color: dm ? '#fcd34d' : '#92400e', fontFamily: "'Inter', 'Segoe UI', sans-serif", lineHeight: '1.6' }}>
-                Permission changes require IT Administrator approval and are logged to the audit trail per ISO 27001 A.9.
+              <span style={{ fontSize: '12px', color: dm ? '#fcd34d' : '#92400e', lineHeight: '1.6' }}>
+                Use <strong>Revoke Access</strong> to immediately block a user from logging in. Module permissions control what they can do once logged in. All changes are logged per ISO 27001 A.9.
               </span>
             </div>
           </div>

@@ -178,22 +178,27 @@ async def seed():
             rd["settings"] = settings_data  # restore
 
         # ── Users ─────────────────────────────────────────────────────────────
+        # Only seed default users on first run (when no users exist at all).
+        # This prevents deleted users from being restored on every restart.
+        from sqlalchemy import func as sqlfunc
+        user_count = (await db.execute(select(sqlfunc.count(RBACUser.id)))).scalar_one()
         admin_user = None
-        for ud in DEFAULT_USERS:
-            existing = (await db.execute(select(RBACUser).where(RBACUser.email == ud["email"]))).scalars().first()
-            if not existing:
-                existing = RBACUser(
+        if user_count == 0:
+            for ud in DEFAULT_USERS:
+                new_user = RBACUser(
                     first_name=ud["first_name"], surname=ud["surname"], email=ud["email"],
                     hashed_password=hash_password(ud["password"]), status=UserStatus.active,
                 )
-                db.add(existing)
+                db.add(new_user)
                 await db.flush()
                 role = role_map.get(ud["role"])
                 if role:
-                    db.add(RBACUserRole(user_id=existing.id, role_id=role.id, assigned_by=existing.id))
+                    db.add(RBACUserRole(user_id=new_user.id, role_id=role.id, assigned_by=new_user.id))
                 print(f"  ✓ User:    {ud['email']}  /  {ud['password']}")
-            if ud["role"] == "it-admin":
-                admin_user = existing
+                if ud["role"] == "it-admin" and admin_user is None:
+                    admin_user = new_user
+        else:
+            print(f"  ℹ  Skipping user seed — {user_count} user(s) already in database.")
 
         await db.commit()
         print("\n✅ RBAC seed complete!")
