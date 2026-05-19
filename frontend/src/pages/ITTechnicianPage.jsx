@@ -21,7 +21,7 @@ const PAGE_HEADERS = {
   },
 };
 
-export default function ITTechnicianPage({ onLogout }) {
+export default function ITTechnicianPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('operational-status');
   const [darkMode, setDarkMode] = useState(false);
   const dm = darkMode;
@@ -59,11 +59,17 @@ export default function ITTechnicianPage({ onLogout }) {
         <div style={styles.profile}>
           <div style={styles.profileInner}>
             <div style={styles.avatar}>
-              <span style={styles.avatarText}>IT</span>
+              <span style={styles.avatarText}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}${(currentUser.surname?.[0] || '').toUpperCase()}` : 'IT'}
+              </span>
             </div>
-            <div>
-              <div style={styles.profileName}>IT Technician</div>
-              <div style={styles.profileRole}>tech@secureops.io</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...styles.profileName, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}. ${currentUser.surname}` : 'IT Technician'}
+              </div>
+              <div style={{ ...styles.profileRole, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser?.email || 'tech@secureops.io'}
+              </div>
             </div>
           </div>
           {onLogout && (

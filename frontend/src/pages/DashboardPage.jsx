@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { users as usersAPI, roles as rolesAPI } from '../services/authService'
+import { users as usersAPI, roles as rolesAPI, activity as activityAPI } from '../services/authService'
 
 const NAV_ITEMS = [
   {
@@ -61,10 +61,13 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   const [removingUser, setRemovingUser] = useState(null)
   const [sessionTimeout, setSessionTimeout] = useState('')
   const [maxFailedAttempts, setMaxFailedAttempts] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const [newUserFirstName, setNewUserFirstName] = useState('')
   const [newUserSurname, setNewUserSurname] = useState('')
   const [newUserEmail, setNewUserEmail] = useState('')
-  const [newUserPassword, setNewUserPassword] = useState('TempPass123!')
+  const [newUserPassword, setNewUserPassword] = useState('')
+  const [newUserConfirmPassword, setNewUserConfirmPassword] = useState('')
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false)
   const [newUserMFA, setNewUserMFA] = useState(false)
   const [editFirstName, setEditFirstName] = useState('')
   const [editSurname, setEditSurname] = useState('')
@@ -78,6 +81,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   const [roleData, setRoleData] = useState(null)
   const [rolePermissions, setRolePermissions] = useState([])
   const [roleSettings, setRoleSettings] = useState(null)
+  const [activityLogs, setActivityLogs] = useState([])
+  const [activityLoading, setActivityLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -85,6 +90,27 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   useEffect(() => {
     fetchRoleData()
   }, [role])
+
+  // Fetch activity logs when tab opens, roleData, or users list changes
+  useEffect(() => {
+    if (activeTab !== 'activity-log' || !roleData) return
+    const fetchActivity = async () => {
+      setActivityLoading(true)
+      try {
+        const params = { page_size: 100, role_id: roleData.id }
+        if (users.length > 0) {
+          params.actor_ids = users.map(u => u.id).join(',')
+        }
+        const logs = await activityAPI.list(params)
+        setActivityLogs(logs)
+      } catch (err) {
+        console.error('Failed to fetch activity logs:', err)
+      } finally {
+        setActivityLoading(false)
+      }
+    }
+    fetchActivity()
+  }, [activeTab, roleData, users])
 
   const fetchRoleData = async () => {
     try {
@@ -141,8 +167,12 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   // CRUD Operations
   const handleAddUser = async () => {
     try {
-      if (!newUserFirstName || !newUserSurname || !newUserEmail) {
+      if (!newUserFirstName || !newUserSurname || !newUserEmail || !newUserPassword) {
         alert('Please fill in all required fields')
+        return
+      }
+      if (newUserPassword !== newUserConfirmPassword) {
+        alert('Passwords do not match')
         return
       }
 
@@ -159,7 +189,9 @@ function RoleProfileView({ role, onBack, dm, styles }) {
       setNewUserFirstName('')
       setNewUserSurname('')
       setNewUserEmail('')
-      setNewUserPassword('TempPass123!')
+      setNewUserPassword('')
+      setNewUserConfirmPassword('')
+      setShowNewUserPassword(false)
       setNewUserMFA(false)
 
       await fetchRoleData() // Refresh the list
@@ -220,11 +252,83 @@ function RoleProfileView({ role, onBack, dm, styles }) {
     }
   }
 
-  const handleToggleUserStatus = async (userId, currentStatus) => {
-    const newStatus = currentStatus === 'active' ? 'suspended' : 'active'
+  const openPrintWindow = (title, html) => {
+    const win = window.open('', '_blank')
+    win.document.write(html)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 400)
+  }
+
+  const sharedStyle = `
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 32px; color: #111827; }
+    h1 { font-size: 20px; margin: 0 0 4px; color: #0891b2; }
+    .meta { font-size: 12px; color: #6b7280; margin-bottom: 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead tr { background: #f1f5f9; }
+    th { text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
+    tr:last-child td { border-bottom: none; }
+    footer { margin-top: 32px; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+  `
+
+  const handleExportUsers = () => {
+    const now = new Date().toLocaleString()
+    const rows = users.map(u => `
+      <tr>
+        <td>${u.first_name} ${u.surname}</td>
+        <td>${u.email}</td>
+        <td>${u.status?.toUpperCase()}</td>
+        <td>${u.mfa_enabled ? 'Enabled' : 'Disabled'}</td>
+        <td>${u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
+      </tr>`).join('')
+    openPrintWindow(`${role} Users`, `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+      <title>${role} Users — AITRMS</title><style>${sharedStyle}</style></head><body>
+      <h1>AITRMS — ${role} Users</h1>
+      <div class="meta">Exported on ${now} &nbsp;·&nbsp; ${users.length} user(s)</div>
+      <table><thead><tr><th>User</th><th>Email</th><th>Status</th><th>MFA</th><th>Last Login</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <footer>IT Automated Risk Management System &nbsp;·&nbsp; Chinhoyi University of Technology</footer>
+      </body></html>`)
+  }
+
+  const handleExportActivityLog = () => {
+    const now = new Date().toLocaleString()
+    const rows = activityLogs.map(log => {
+      const actor = log.actor_email || log.target_user_email || log.details?.email || '—'
+      const detail = log.details ? Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(', ') : '—'
+      const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'
+      return `<tr>
+        <td>${ts}</td>
+        <td>${actor}</td>
+        <td>${String(log.action).toUpperCase()}</td>
+        <td>${detail}</td>
+        <td>${String(log.result).toUpperCase()}</td>
+      </tr>`
+    }).join('')
+    openPrintWindow(`${role} Activity Log`, `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+      <title>${role} Activity Log — AITRMS</title><style>${sharedStyle}</style></head><body>
+      <h1>AITRMS — ${role} Activity Log</h1>
+      <div class="meta">Exported on ${now} &nbsp;·&nbsp; ${activityLogs.length} event(s)</div>
+      <table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Details</th><th>Result</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <footer>IT Automated Risk Management System &nbsp;·&nbsp; Chinhoyi University of Technology</footer>
+      </body></html>`)
+  }
+
+  const handleToggleUserStatus = async (userId, currentStatus, userName) => {
+    const suspending = currentStatus === 'active'
+    const newStatus = suspending ? 'suspended' : 'active'
+    if (suspending) {
+      const confirmed = window.confirm(`Suspend ${userName}?\n\nThis will immediately block their access to the system.`)
+      if (!confirmed) return
+    }
     try {
       await usersAPI.setStatus(userId, newStatus, 'Status changed from dashboard')
-      await fetchRoleData()
+      // Update the table immediately without waiting for a server round-trip
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: newStatus } : u))
+      // Silently refresh in the background to sync any other changes
+      fetchRoleData().catch(err => console.error('Background refresh failed:', err))
     } catch (err) {
       console.error('Error toggling status:', err)
       alert('Failed to change status: ' + err.message)
@@ -331,12 +435,16 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             </svg>
             Add User
           </button>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent', color: dm ? '#94a3b8' : '#374151', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', padding: '10px 20px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Export
-          </button>
+          {(activeTab === 'users' || activeTab === 'activity-log') && (
+            <button
+              onClick={activeTab === 'users' ? handleExportUsers : handleExportActivityLog}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent', color: dm ? '#94a3b8' : '#374151', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', padding: '10px 20px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export {activeTab === 'activity-log' ? 'Log' : 'Users'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -600,36 +708,43 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 </tr>
               </thead>
               <tbody>
-                {[
-                  { action: 'ROLE_ASSIGN',   result: 'success'  },
-                  { action: 'MFA_TOGGLE',    result: 'success'  },
-                  { action: 'STATUS_CHANGE', result: 'success'  },
-                  { action: 'PERM_REQUEST',  result: 'pending'  },
-                  { action: 'ROLE_REMOVE',   result: 'success'  },
-                  { action: 'AUTO_LOCKOUT',  result: 'enforced' },
-                  { action: 'SESSION_KILL',  result: 'success'  },
-                ].map(({ action, result }, i, arr) => (
-                  <tr key={i} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
-                    <td style={{ padding: '16px 20px', fontSize: '13px', fontFamily: "'Inter', 'Segoe UI', sans-serif", color: dm ? '#64748b' : '#9ca3af', whiteSpace: 'nowrap' }}>—</td>
-                    <td style={{ padding: '16px 20px', fontSize: '13px', fontFamily: "'Inter', 'Segoe UI', sans-serif", color: dm ? '#93c5fd' : '#0891b2' }}>—</td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', border: `1px solid ${dm ? '#0891b2' : '#67e8f9'}`, color: dm ? '#22d3ee' : '#0891b2', background: 'transparent', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
-                        {action}
+                {activityLoading ? (
+                  <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading activity...</td></tr>
+                ) : activityLogs.length === 0 ? (
+                  <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No activity recorded yet</td></tr>
+                ) : activityLogs.map((log, i, arr) => {
+                  const r = String(log.result).toUpperCase()
+                  const resultColor = r === 'SUCCESS'  ? { background: '#d1fae5', color: '#065f46', border: '1px solid #10b981' }
+                                    : r === 'FAILED'   ? { background: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444' }
+                                    : r === 'PENDING'  ? { background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }
+                                    : r === 'ENFORCED' ? { background: '#ffedd5', color: '#9a3412', border: '1px solid #f97316' }
+                                    :                    { background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }
+                  const detailStr = log.details
+                    ? Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(' · ')
+                    : '—'
+                  return (
+                  <tr key={log.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
+                    <td style={{ padding: '14px 20px', fontSize: '12px', color: dm ? '#64748b' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                      {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
+                    </td>
+                    <td style={{ padding: '14px 20px', fontSize: '13px', color: dm ? '#93c5fd' : '#0891b2', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {log.actor_email || log.target_user_email || log.details?.email || '—'}
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', border: `1px solid ${dm ? '#0891b2' : '#67e8f9'}`, color: dm ? '#22d3ee' : '#0891b2', background: 'transparent' }}>
+                        {String(log.action).toUpperCase()}
                       </span>
                     </td>
-                    <td style={{ padding: '16px 20px', fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>—</td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '3px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', fontFamily: "'Inter', 'Segoe UI', sans-serif",
-                        ...(result === 'success'  ? { border: '1px solid #22c55e', color: '#16a34a', background: 'transparent' } :
-                            result === 'pending'  ? { border: '1px solid #f59e0b', color: '#d97706', background: 'transparent' } :
-                                                    { border: '1px solid #f97316', color: '#ea580c', background: 'transparent' }),
-                      }}>
-                        {result.toUpperCase()}
+                    <td style={{ padding: '14px 20px', fontSize: '12px', color: dm ? '#94a3b8' : '#6b7280', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={detailStr}>
+                      {detailStr}
+                    </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <span style={{ display: 'inline-block', padding: '3px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', ...resultColor }}>
+                        {String(log.result).toUpperCase()}
                       </span>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -643,6 +758,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
               <input type="text" placeholder={`Search ${role} users...`}
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
                 style={{ width: '100%', padding: '12px 14px 12px 42px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
           </div>
@@ -652,7 +769,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${dm ? '#334155' : '#e5e7eb'}` }}>
-                {['User', 'Email', 'Status', 'MFA', 'Last Login', 'Sessions', 'Actions'].map((col) => (
+                {['User', 'Email', 'Status', 'MFA', 'Last Login', 'Actions'].map((col) => (
                   <th key={col} style={{ padding: '10px 20px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.4px', whiteSpace: 'nowrap' }}>{col}</th>
                 ))}
               </tr>
@@ -662,9 +779,18 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading users...</td></tr>
               ) : error ? (
                 <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: '#ef4444' }}>Error: {error}</td></tr>
-              ) : users.length === 0 ? (
-                <tr><td colSpan="7" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No users found for this role</td></tr>
-              ) : users.map((user, i, arr) => {
+              ) : (() => {
+                const q = searchTerm.toLowerCase().trim()
+                const filtered = q
+                  ? users.filter(u =>
+                      `${u.first_name} ${u.surname}`.toLowerCase().includes(q) ||
+                      u.email.toLowerCase().includes(q)
+                    )
+                  : users
+                if (filtered.length === 0) return (
+                  <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No users match "{searchTerm}"</td></tr>
+                )
+                return filtered.map((user, i, arr) => {
                 const initials = `${user.first_name?.[0] || ''}${user.surname?.[0] || ''}`.toUpperCase()
                 const fullName = `${user.first_name || ''} ${user.surname || ''}`.trim()
                 const lastLogin = user.last_login ? new Date(user.last_login).toLocaleString() : 'Never'
@@ -686,22 +812,18 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                   <td style={{ padding: '18px 20px', fontSize: '13px', fontFamily: "'Inter', 'Segoe UI', sans-serif", color: dm ? '#94a3b8' : '#6b7280' }}>{user.email}</td>
                   {/* Status */}
                   <td style={{ padding: '18px 20px' }}>
-                    <span
-                      onClick={() => handleToggleUserStatus(user.id, user.status)}
-                      style={{
-                        display: 'inline-block',
-                        padding: '3px 12px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        letterSpacing: '0.5px',
-                        cursor: 'pointer',
-                        background: user.status === 'active' ? '#d1fae5' : user.status === 'suspended' ? '#fee2e2' : '#f3f4f6',
-                        color: user.status === 'active' ? '#065f46' : user.status === 'suspended' ? '#991b1b' : '#6b7280',
-                        border: `1px solid ${user.status === 'active' ? '#10b981' : user.status === 'suspended' ? '#ef4444' : '#e5e7eb'}`
-                      }}
-                    >
-                      {user.status?.toUpperCase() || 'UNKNOWN'}
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '3px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      letterSpacing: '0.5px',
+                      background: user.status === 'active' ? '#d1fae5' : user.status === 'suspended' ? '#fee2e2' : '#f3f4f6',
+                      color: user.status === 'active' ? '#065f46' : user.status === 'suspended' ? '#991b1b' : '#6b7280',
+                      border: `1px solid ${user.status === 'active' ? '#10b981' : user.status === 'suspended' ? '#ef4444' : '#e5e7eb'}`
+                    }}>
+                      {user.status === 'active' ? 'ACTIVE' : user.status === 'suspended' ? 'SUSPENDED' : (user.status?.toUpperCase() || 'UNKNOWN')}
                     </span>
                   </td>
                   {/* MFA */}
@@ -724,20 +846,21 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                   </td>
                   {/* Last Login */}
                   <td style={{ padding: '18px 20px', fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280', whiteSpace: 'nowrap' }}>{lastLogin}</td>
-                  {/* Sessions */}
-                  <td style={{ padding: '18px 20px', fontSize: '13px', color: dm ? '#64748b' : '#9ca3af' }}>—</td>
                   {/* Actions */}
                   <td style={{ padding: '18px 20px', whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button onClick={() => { setEditingUser(user); setShowEditUser(true) }} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, background: 'transparent', color: dm ? '#94a3b8' : '#374151', cursor: 'pointer' }}>Edit</button>
-                      <button onClick={() => handleToggleUserStatus(user.id, user.status)} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: '1px solid #f97316', background: 'transparent', color: '#f97316', cursor: 'pointer' }}>
-                        {user.status === 'active' ? 'Suspend' : 'Activate'}
-                      </button>
+                      {user.status === 'active' ? (
+                        <button onClick={() => handleToggleUserStatus(user.id, user.status, `${user.first_name} ${user.surname}`)} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: '1px solid #f97316', background: 'transparent', color: '#f97316', cursor: 'pointer' }}>Suspend</button>
+                      ) : (
+                        <button onClick={() => handleToggleUserStatus(user.id, user.status, `${user.first_name} ${user.surname}`)} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: '1px solid #16a34a', background: 'transparent', color: '#16a34a', cursor: 'pointer' }}>Activate</button>
+                      )}
                       <button onClick={() => { setRemovingUser(user); setShowRemoveUser(true) }} style={{ padding: '5px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', border: '1px solid #ef4444', background: 'transparent', color: '#ef4444', cursor: 'pointer' }}>Remove</button>
                     </div>
                   </td>
                 </tr>
-              )})}
+              )})
+              })()}
             </tbody>
           </table>
         </div>
@@ -936,6 +1059,38 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                 style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
             </div>
 
+            {/* Password */}
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Password</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showNewUserPassword ? 'text' : 'password'} placeholder="Enter password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  style={{ width: '100%', padding: '12px 44px 12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+
+            {/* Confirm Password */}
+            <div style={{ marginBottom: '18px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Confirm Password</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showNewUserPassword ? 'text' : 'password'} placeholder="Re-enter password"
+                  value={newUserConfirmPassword}
+                  onChange={(e) => setNewUserConfirmPassword(e.target.value)}
+                  style={{ width: '100%', padding: '12px 14px', border: `1px solid ${newUserConfirmPassword && newUserPassword !== newUserConfirmPassword ? '#ef4444' : (dm ? '#334155' : '#e5e7eb')}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              {newUserConfirmPassword && newUserPassword !== newUserConfirmPassword && (
+                <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#ef4444' }}>Passwords do not match</p>
+              )}
+            </div>
+
+            {/* Show Password */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
+              <input type="checkbox" id="showPwdToggle" checked={showNewUserPassword} onChange={(e) => setShowNewUserPassword(e.target.checked)}
+                style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: '#0891b2' }} />
+              <label htmlFor="showPwdToggle" style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280', cursor: 'pointer', userSelect: 'none' }}>Show password</label>
+            </div>
+
             {/* MFA Toggle */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', background: dm ? '#0f172a' : '#f9fafb', borderRadius: '10px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, marginBottom: '28px' }}>
               <div>
@@ -969,7 +1124,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   )
 }
 
-export default function DashboardPage({ onLogout }) {
+export default function DashboardPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('risk')
   const [darkMode, setDarkMode] = useState(false)
   const [riskData, setRiskData] = useState(null)
@@ -977,14 +1132,14 @@ export default function DashboardPage({ onLogout }) {
   const [managingRole, setManagingRole] = useState(null)
 
   const fetchRiskData = () => {
-    fetch('http://localhost:8000/api/v1/ui/admin/overview')
+    fetch('/api/v1/ui/admin/overview')
       .then(res => res.json())
       .then(data => setRiskData(data))
       .catch(err => console.error("Error fetching admin overview", err))
   }
 
   const fetchIncidentData = () => {
-    fetch('http://localhost:8000/api/v1/ui/admin/incidents')
+    fetch('/api/v1/ui/admin/incidents')
       .then(res => res.json())
       .then(data => setIncidentData(data))
       .catch(err => console.error("Error fetching admin incidents", err))
@@ -1001,7 +1156,7 @@ export default function DashboardPage({ onLogout }) {
 
   const handleDeclareIncident = async () => {
     try {
-      await fetch('http://localhost:8000/api/v1/risk/register_incident', {
+      await fetch('/api/v1/risk/register_incident', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1062,14 +1217,18 @@ export default function DashboardPage({ onLogout }) {
         {/* Admin Profile — pinned to bottom */}
         <div style={styles.profile}>
           <div style={styles.profileInner}>
-            <div style={styles.avatar}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
+            <div style={{ ...styles.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', letterSpacing: '0.5px' }}>
+              {currentUser
+                ? `${(currentUser.first_name?.[0] || '').toUpperCase()}${(currentUser.surname?.[0] || '').toUpperCase()}`
+                : 'AD'}
             </div>
-            <div>
-              <div style={styles.profileName}>Admin</div>
-              <div style={styles.profileRole}>System Manager</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...styles.profileName, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}. ${currentUser.surname}` : 'Admin'}
+              </div>
+              <div style={{ ...styles.profileRole, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser?.email || 'System Manager'}
+              </div>
             </div>
           </div>
           {onLogout && (

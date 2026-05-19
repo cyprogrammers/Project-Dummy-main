@@ -42,7 +42,7 @@ const FRAMEWORKS = [
   { id: 'iso',     label: 'ISO 27001', color: '#d97706', trackColor: '#fef3c7', hasCritical: true  },
 ]
 
-export default function ComplianceOfficerPage({ onLogout }) {
+export default function ComplianceOfficerPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('overview')
   const [darkMode, setDarkMode] = useState(false)
   const dm = darkMode
@@ -89,11 +89,17 @@ export default function ComplianceOfficerPage({ onLogout }) {
         <div style={styles.profile}>
           <div style={styles.profileInner}>
             <div style={styles.avatar}>
-              <span style={styles.avatarText}>CO</span>
+              <span style={styles.avatarText}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}${(currentUser.surname?.[0] || '').toUpperCase()}` : 'CO'}
+              </span>
             </div>
-            <div>
-              <div style={styles.profileName}>Compliance Officer</div>
-              <div style={styles.profileRole}>compliance@cut.ac.zw</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...styles.profileName, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}. ${currentUser.surname}` : 'Compliance Officer'}
+              </div>
+              <div style={{ ...styles.profileRole, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser?.email || 'compliance@cut.ac.zw'}
+              </div>
             </div>
           </div>
           {onLogout && (

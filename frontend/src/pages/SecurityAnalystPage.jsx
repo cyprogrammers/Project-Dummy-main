@@ -70,7 +70,7 @@ const PAGE_HEADERS = {
 // Placeholder alert rows (no data)
 const ALERT_PLACEHOLDERS = [1, 2, 3, 4]
 
-export default function SecurityAnalystPage({ onLogout }) {
+export default function SecurityAnalystPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('events')
   const [darkMode, setDarkMode] = useState(false)
   const [storylineData, setStorylineData] = useState({ storylines: [], totals: { open: 0, critical: 0, blocked_ips: 0, avg_confidence: 0 } })
@@ -173,11 +173,17 @@ export default function SecurityAnalystPage({ onLogout }) {
         <div style={styles.profile}>
           <div style={styles.profileInner}>
             <div style={styles.avatar}>
-              <span style={styles.avatarText}>SA</span>
+              <span style={styles.avatarText}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}${(currentUser.surname?.[0] || '').toUpperCase()}` : 'SA'}
+              </span>
             </div>
-            <div>
-              <div style={styles.profileName}>Security Analyst</div>
-              <div style={styles.profileRole}>admin@secureops.io</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...styles.profileName, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}. ${currentUser.surname}` : 'Security Analyst'}
+              </div>
+              <div style={{ ...styles.profileRole, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser?.email || 'admin@secureops.io'}
+              </div>
             </div>
           </div>
           {onLogout && (

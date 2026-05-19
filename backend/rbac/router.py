@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from db.database import get_db
 from rbac import auth_utils as au
@@ -199,11 +200,11 @@ async def login(
             user.status = UserStatus.locked
             await db.commit()
             await au.log_activity(db, ActivityAction.auto_lockout, ActivityResult.enforced,
-                                   target_user=user, details={"attempts": user.failed_login_attempts}, ip_address=ip)
+                                   target_user=user, details={"email": user.email, "attempts": user.failed_login_attempts}, ip_address=ip)
             raise HTTPException(403, "Account locked after too many failed attempts")
         await db.commit()
         await au.log_activity(db, ActivityAction.login_failed, ActivityResult.failed,
-                               target_user=user, details={"attempts": user.failed_login_attempts}, ip_address=ip)
+                               target_user=user, details={"email": user.email, "attempts": user.failed_login_attempts}, ip_address=ip)
         raise HTTPException(401, "Invalid email or password")
 
     # MFA check
@@ -448,7 +449,11 @@ async def update_status(
     old = u.status; u.status = body.status
     if body.status == UserStatus.active:
         u.failed_login_attempts = 0
-    await db.commit(); await db.refresh(u)
+    await db.commit()
+    u = (await db.execute(
+        select(RBACUser).where(RBACUser.id == uid)
+        .options(selectinload(RBACUser.roles))
+    )).scalars().first()
     await au.log_activity(db, ActivityAction.status_change, ActivityResult.success,
                            actor=actor, target_user=u,
                            details={"from": old, "to": body.status, "reason": body.reason},
@@ -461,7 +466,10 @@ async def toggle_mfa(
     request: Request, uid: int, body: MFAToggle,
     db: AsyncSession = Depends(get_db), actor: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    u = (await db.execute(select(RBACUser).where(RBACUser.id == uid))).scalars().first()
+    u = (await db.execute(
+        select(RBACUser).where(RBACUser.id == uid)
+        .options(selectinload(RBACUser.roles).selectinload(RBACRole.settings))
+    )).scalars().first()
     if not u:
         raise HTTPException(404)
     if not body.enabled and any(r.settings and r.settings.require_mfa for r in u.roles):
@@ -469,7 +477,11 @@ async def toggle_mfa(
     u.mfa_enabled = body.enabled
     if not body.enabled:
         u.mfa_secret = None
-    await db.commit(); await db.refresh(u)
+    await db.commit()
+    u = (await db.execute(
+        select(RBACUser).where(RBACUser.id == uid)
+        .options(selectinload(RBACUser.roles))
+    )).scalars().first()
     await au.log_activity(db, ActivityAction.mfa_toggle, ActivityResult.success,
                            actor=actor, target_user=u, details={"enabled": body.enabled},
                            ip_address=au.get_client_ip(request))
@@ -762,14 +774,29 @@ async def list_activity(
     result: Optional[ActivityResult] = None,
     actor_id: Optional[int] = None,
     role_id:  Optional[int] = None,
+    actor_ids: Optional[str] = None,   # comma-separated user IDs
     db: AsyncSession = Depends(get_db),
     _: RBACUser = Depends(au.get_current_rbac_user),
 ):
+    from sqlalchemy import or_
     q = select(RBACActivityLog)
     if action:   q = q.where(RBACActivityLog.action   == action)
     if result:   q = q.where(RBACActivityLog.result   == result)
     if actor_id: q = q.where(RBACActivityLog.actor_id == actor_id)
-    if role_id:  q = q.where(RBACActivityLog.role_id  == role_id)
+    if actor_ids:
+        ids = [int(i) for i in actor_ids.split(",") if i.strip().isdigit()]
+        if ids:
+            # show events where any of these users is the actor OR the target,
+            # OR the event is directly tagged to the role
+            conditions = [
+                RBACActivityLog.actor_id.in_(ids),
+                RBACActivityLog.target_user_id.in_(ids),
+            ]
+            if role_id:
+                conditions.append(RBACActivityLog.role_id == role_id)
+            q = q.where(or_(*conditions))
+    elif role_id:
+        q = q.where(RBACActivityLog.role_id == role_id)
     logs = (await db.execute(
         q.order_by(RBACActivityLog.timestamp.desc()).offset((page - 1) * page_size).limit(page_size)
     )).scalars().all()

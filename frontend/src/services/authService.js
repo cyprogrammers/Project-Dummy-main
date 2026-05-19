@@ -6,7 +6,7 @@
  * Manages tokens in memory (sessionStorage for tab persistence). 
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "";
 const RBAC     = `${API_BASE}/api/v1/rbac`;
 
 // ─── Token storage (sessionStorage survives refresh, clears on tab close) ────

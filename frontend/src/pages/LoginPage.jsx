@@ -235,7 +235,7 @@ export default function LoginPage({ onLogin }) {
                   {loading ? 'Verifying…' : 'Verify Code'}
                 </button>
 
-                <button type="button" onClick={() => { setMfaStep(false); setTotpCode(''); setError(''); }}
+                <button type="button" onClick={() => { setMfaStep(false); setTotpCode(''); setError(''); setEmail(''); setPassword(''); setMfaEmail(''); }}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#6b7280', marginTop: '4px', textDecoration: 'underline' }}>
                   ← Back to login
                 </button>

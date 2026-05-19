@@ -56,7 +56,7 @@ const PAGE_HEADERS = {
 
 const PLACEHOLDER_ROWS = [1, 2, 3, 4]
 
-export default function SystemAuditorPage({ onLogout }) {
+export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('audit-trail')
   const [darkMode, setDarkMode] = useState(false)
   const dm = darkMode
@@ -101,11 +101,17 @@ export default function SystemAuditorPage({ onLogout }) {
         <div style={styles.profile}>
           <div style={styles.profileInner}>
             <div style={styles.avatar}>
-              <span style={styles.avatarText}>SA</span>
+              <span style={styles.avatarText}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}${(currentUser.surname?.[0] || '').toUpperCase()}` : 'SA'}
+              </span>
             </div>
-            <div>
-              <div style={styles.profileName}>System Auditor</div>
-              <div style={styles.profileRole}>auditor@secureops.io</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ ...styles.profileName, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser ? `${(currentUser.first_name?.[0] || '').toUpperCase()}. ${currentUser.surname}` : 'System Auditor'}
+              </div>
+              <div style={{ ...styles.profileRole, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser?.email || 'auditor@secureops.io'}
+              </div>
             </div>
           </div>
           {onLogout && (
