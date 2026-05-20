@@ -73,6 +73,11 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   const [editSurname, setEditSurname] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editStatus, setEditStatus] = useState('active')
+  const [editOldPassword, setEditOldPassword] = useState('')
+  const [editNewPassword, setEditNewPassword] = useState('')
+  const [editConfirmPassword, setEditConfirmPassword] = useState('')
+  const [editPwError, setEditPwError] = useState('')
+  const [showEditPasswords, setShowEditPasswords] = useState(false)
   const tabs = ['USERS', 'PERMISSIONS', 'SETTINGS', 'ACTIVITY LOG']
   const tabIds = ['users', 'permissions', 'settings', 'activity-log']
 
@@ -286,6 +291,15 @@ function RoleProfileView({ role, onBack, dm, styles }) {
 
   const handleUpdateUser = async () => {
     if (!editingUser) return
+    setEditPwError('')
+
+    // Password change validation
+    if (editOldPassword || editNewPassword || editConfirmPassword) {
+      if (!editOldPassword) { setEditPwError('Please enter your current password.'); return }
+      if (!editNewPassword) { setEditPwError('Please enter a new password.'); return }
+      if (editNewPassword !== editConfirmPassword) { setEditPwError('New passwords do not match.'); return }
+      if (editNewPassword.length < 8) { setEditPwError('New password must be at least 8 characters.'); return }
+    }
 
     try {
       const updates = {}
@@ -293,14 +307,22 @@ function RoleProfileView({ role, onBack, dm, styles }) {
       if (editSurname && editSurname !== editingUser.surname) updates.surname = editSurname
       if (editEmail && editEmail !== editingUser.email) updates.email = editEmail
 
-      if (Object.keys(updates).length === 0) {
-        alert('No changes made')
-        setShowEditUser(false)
-        return
+      if (Object.keys(updates).length > 0) {
+        await usersAPI.update(editingUser.id, updates)
       }
 
-      await usersAPI.update(editingUser.id, updates)
-      await fetchRoleData() // Refresh the list
+      if (editOldPassword && editNewPassword) {
+        try {
+          await usersAPI.changePassword(editingUser.id, editOldPassword, editNewPassword)
+        } catch (pwErr) {
+          setEditPwError(pwErr.message?.includes('400') || pwErr.message?.toLowerCase().includes('incorrect')
+            ? 'Current password is incorrect.'
+            : (pwErr.message || 'Password change failed.'))
+          return
+        }
+      }
+
+      await fetchRoleData()
       setShowEditUser(false)
       setEditingUser(null)
       alert('User updated successfully!')
@@ -317,6 +339,11 @@ function RoleProfileView({ role, onBack, dm, styles }) {
       setEditSurname(editingUser.surname || '')
       setEditEmail(editingUser.email || '')
       setEditStatus(editingUser.status || 'active')
+      setEditOldPassword('')
+      setEditNewPassword('')
+      setEditConfirmPassword('')
+      setEditPwError('')
+      setShowEditPasswords(false)
     }
   }, [editingUser])
 
@@ -1022,9 +1049,9 @@ function RoleProfileView({ role, onBack, dm, styles }) {
 
       {/* ── Edit User Modal ── */}
       {showEditUser && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}
           onClick={() => setShowEditUser(false)}>
-          <div style={{ background: dm ? '#1e293b' : 'white', borderRadius: '18px', padding: '32px 36px', width: '100%', maxWidth: '480px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, fontFamily: "'Inter','Segoe UI',sans-serif" }}
+          <div style={{ background: dm ? '#1e293b' : 'white', borderRadius: '18px', padding: '32px 36px', width: '100%', maxWidth: '480px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, fontFamily: "'Inter','Segoe UI',sans-serif" }}
             onClick={(e) => e.stopPropagation()}>
 
             {/* Header */}
@@ -1083,11 +1110,65 @@ function RoleProfileView({ role, onBack, dm, styles }) {
             </div>
 
             {/* Status - Display only */}
-            <div style={{ marginBottom: '28px' }}>
+            <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Status</label>
               <div style={{ padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#64748b' : '#9ca3af', background: dm ? '#0f172a' : '#f9fafb' }}>
                 {editingUser?.status?.charAt(0).toUpperCase() + editingUser?.status?.slice(1) || 'Unknown'} (Use status toggle in table)
               </div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ height: '1px', background: dm ? '#334155' : '#f3f4f6', margin: '4px 0 18px' }} />
+
+            {/* Password Change Section */}
+            <div style={{ marginBottom: '4px' }}>
+              <p style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', margin: '0 0 14px 0' }}>Change Password (optional)</p>
+
+              {/* Current Password */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Current Password</label>
+                <input type={showEditPasswords ? 'text' : 'password'}
+                  value={editOldPassword}
+                  onChange={(e) => { setEditOldPassword(e.target.value); setEditPwError('') }}
+                  placeholder="Enter current password"
+                  style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+
+              {/* New Password — disabled until old password is entered */}
+              <div style={{ marginBottom: '14px', opacity: editOldPassword ? 1 : 0.4, pointerEvents: editOldPassword ? 'auto' : 'none' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>New Password</label>
+                <input type={showEditPasswords ? 'text' : 'password'}
+                  value={editNewPassword}
+                  onChange={(e) => { setEditNewPassword(e.target.value); setEditPwError('') }}
+                  placeholder="Enter new password"
+                  disabled={!editOldPassword}
+                  style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+
+              {/* Confirm New Password — disabled until new password is entered */}
+              <div style={{ marginBottom: '10px', opacity: editNewPassword ? 1 : 0.4, pointerEvents: editNewPassword ? 'auto' : 'none' }}>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Confirm New Password</label>
+                <input type={showEditPasswords ? 'text' : 'password'}
+                  value={editConfirmPassword}
+                  onChange={(e) => { setEditConfirmPassword(e.target.value); setEditPwError('') }}
+                  placeholder="Confirm new password"
+                  disabled={!editNewPassword}
+                  style={{ width: '100%', padding: '12px 14px', border: `1px solid ${editPwError && editConfirmPassword && editConfirmPassword !== editNewPassword ? '#ef4444' : (dm ? '#334155' : '#e5e7eb')}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+
+              {/* Show passwords checkbox */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '14px', userSelect: 'none' }}>
+                <input type="checkbox" checked={showEditPasswords} onChange={(e) => setShowEditPasswords(e.target.checked)}
+                  style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: '#0891b2' }} />
+                <span style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Show passwords</span>
+              </label>
+
+              {/* Password error */}
+              {editPwError && (
+                <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', fontSize: '13px', color: '#dc2626', marginBottom: '14px' }}>
+                  {editPwError}
+                </div>
+              )}
             </div>
 
             {/* Divider */}
