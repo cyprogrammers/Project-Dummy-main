@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { users as usersAPI, roles as rolesAPI, activity as activityAPI } from '../services/authService'
+import { users as usersAPI, roles as rolesAPI, activity as activityAPI, dashboard as dashboardAPI } from '../services/authService'
 
 const NAV_ITEMS = [
   {
@@ -867,9 +867,14 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                                     : r === 'PENDING'  ? { background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }
                                     : r === 'ENFORCED' ? { background: '#ffedd5', color: '#9a3412', border: '1px solid #f97316' }
                                     :                    { background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }
-                  const detailStr = log.details
-                    ? Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(' · ')
-                    : '—'
+                  const parts = []
+                  if (log.target_user_email && log.target_user_email !== log.actor_email) {
+                    parts.push(`user: ${log.target_user_email}`)
+                  }
+                  if (log.details) {
+                    Object.entries(log.details).forEach(([k, v]) => parts.push(`${k}: ${v}`))
+                  }
+                  const detailStr = parts.length > 0 ? parts.join(' · ') : '—'
                   return (
                   <tr key={log.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
                     <td style={{ padding: '14px 20px', fontSize: '12px', color: dm ? '#64748b' : '#9ca3af', whiteSpace: 'nowrap' }}>
@@ -1278,6 +1283,18 @@ export default function DashboardPage({ onLogout, currentUser }) {
   const [riskData, setRiskData] = useState(null)
   const [incidentData, setIncidentData] = useState({ incidents: [], totals: { open: 0, critical: 0 } })
   const [managingRole, setManagingRole] = useState(null)
+  const [rolesList, setRolesList] = useState([])
+  const [rbacStats, setRbacStats] = useState(null)
+
+  const fetchRolesList = async () => {
+    try {
+      const [roles, stats] = await Promise.all([rolesAPI.list(), dashboardAPI.rbacStats()])
+      setRolesList(roles)
+      setRbacStats(stats)
+    } catch (err) {
+      console.error('Failed to fetch access control data:', err)
+    }
+  }
 
   const fetchRiskData = () => {
     fetch('/api/v1/ui/admin/overview')
@@ -1294,13 +1311,10 @@ export default function DashboardPage({ onLogout, currentUser }) {
   }
 
   useEffect(() => {
-    if (activePage === 'risk') {
-      fetchRiskData()
-    }
-    if (activePage === 'incidents') {
-      fetchIncidentData()
-    }
-  }, [activePage])
+    if (activePage === 'risk') fetchRiskData()
+    if (activePage === 'incidents') fetchIncidentData()
+    if (activePage === 'access' && !managingRole) fetchRolesList()
+  }, [activePage, managingRole])
 
   const handleDeclareIncident = async () => {
     try {
@@ -1565,22 +1579,32 @@ export default function DashboardPage({ onLogout, currentUser }) {
           <div style={styles.cardGrid}>
             <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
               <span style={styles.cardLabel}>TOTAL USERS</span>
-              <div style={{ fontSize: '34px', fontWeight: '800', color: '#0891b2', lineHeight: '1' }}>—</div>
+              <div style={{ fontSize: '34px', fontWeight: '800', color: '#0891b2', lineHeight: '1' }}>
+                {rbacStats ? rbacStats.active_users : '—'}
+              </div>
               <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>Active accounts</div>
             </div>
             <div style={{ ...styles.card, background: dm ? '#451a03' : '#fffbeb', border: `1px solid ${dm ? '#78350f' : '#fef3c7'}` }}>
               <span style={styles.cardLabel}>MFA ENABLED</span>
-              <div style={{ fontSize: '34px', fontWeight: '800', color: '#f59e0b', lineHeight: '1' }}>—</div>
-              <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>—% adoption rate</div>
+              <div style={{ fontSize: '34px', fontWeight: '800', color: '#f59e0b', lineHeight: '1' }}>
+                {rbacStats ? rbacStats.mfa_enabled : '—'}
+              </div>
+              <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>
+                {rbacStats ? `${rbacStats.mfa_adoption_rate}% adoption rate` : '—% adoption rate'}
+              </div>
             </div>
             <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
               <span style={styles.cardLabel}>PENDING APPROVALS</span>
-              <div style={{ fontSize: '34px', fontWeight: '800', color: '#f97316', lineHeight: '1' }}>—</div>
+              <div style={{ fontSize: '34px', fontWeight: '800', color: '#f97316', lineHeight: '1' }}>
+                {rbacStats ? rbacStats.pending_approvals : '—'}
+              </div>
               <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>Elevated permission requests</div>
             </div>
             <div style={{ ...styles.card, background: dm ? '#083344' : '#ecfeff', border: `1px solid ${dm ? '#164e63' : '#cffafe'}` }}>
               <span style={styles.cardLabel}>PAM SESSIONS</span>
-              <div style={{ fontSize: '34px', fontWeight: '800', color: '#7c3aed', lineHeight: '1' }}>—</div>
+              <div style={{ fontSize: '34px', fontWeight: '800', color: '#7c3aed', lineHeight: '1' }}>
+                {rbacStats ? rbacStats.pam_sessions : '—'}
+              </div>
               <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>Active privileged session</div>
             </div>
           </div>
@@ -1600,17 +1624,20 @@ export default function DashboardPage({ onLogout, currentUser }) {
                   { role: 'Compliance Officer', access: 'Reports & Policies', mfa: 'optional' },
                   { role: 'System Auditor', access: 'Read-Only Audit', mfa: 'optional' },
                   { role: 'IT Technician', access: 'Operational', mfa: 'optional' },
-                ].map(({ role, access, mfa }) => (
+                ].map(({ role, access, mfa }) => {
+                  const roleData = rolesList.find(r => r.name === role)
+                  const activeCount = roleData ? roleData.active_user_count : '—'
+                  return (
                   <tr key={role}>
                     <td style={{ ...styles.td, color: '#0891b2', fontWeight: '600' }}>{role}</td>
-                    <td style={{ ...styles.td, fontWeight: '700', color: dm ? '#f1f5f9' : '#111827' }}>—</td>
+                    <td style={{ ...styles.td, fontWeight: '700', color: dm ? '#f1f5f9' : '#111827' }}>{activeCount}</td>
                     <td style={styles.td}>{access}</td>
                     <td style={styles.td}>
                       {mfa === 'required' ? <span style={styles.mfaRequired}>Required</span> : <span style={styles.mfaOptional}>Optional</span>}
                     </td>
                     <td style={styles.td}><button onClick={() => setManagingRole(role)} style={styles.manageLink}>Manage &gt;</button></td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>

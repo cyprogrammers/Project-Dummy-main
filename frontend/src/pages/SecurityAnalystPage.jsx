@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { dashboard as dashboardAPI } from '../services/authService'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -76,6 +77,8 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
   const [storylineData, setStorylineData] = useState({ storylines: [], totals: { open: 0, critical: 0, blocked_ips: 0, avg_confidence: 0 } })
   const [isSimulating, setIsSimulating] = useState(false)
   const [storylineError, setStorylineError] = useState('')
+  const [loginStats, setLoginStats] = useState(null)
+  const [loginHourly, setLoginHourly] = useState(null)
   const styles = makeStyles(darkMode)
   const dm = darkMode
   const header = PAGE_HEADERS[activePage]
@@ -125,9 +128,22 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
     }
   }
 
+  const loadLoginStats = async () => {
+    try {
+      const [stats, hourly] = await Promise.all([dashboardAPI.loginStats(), dashboardAPI.loginHourly()])
+      setLoginStats(stats)
+      setLoginHourly(hourly)
+    } catch (err) {
+      console.error('Failed to load login stats:', err)
+    }
+  }
+
   useEffect(() => {
-    if (activePage === 'attack-storyline') {
-      loadStorylines()
+    if (activePage === 'attack-storyline') loadStorylines()
+    if (activePage === 'login-monitor') {
+      loadLoginStats()
+      const interval = setInterval(loadLoginStats, 30000)
+      return () => clearInterval(interval)
     }
   }, [activePage])
 
@@ -395,18 +411,18 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
           <div style={styles.cardGrid4}>
             <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce7'}` }}>
               <span style={{ ...styles.cardLabel, color: '#0891b2' }}>LOGINS (24H)</span>
-              <div style={{ ...styles.cardValue, color: '#16a34a' }}>—</div>
+              <div style={{ ...styles.cardValue, color: '#16a34a' }}>{loginStats ? loginStats.logins_24h : '—'}</div>
               <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Successful</div>
             </div>
             <div style={{ ...styles.card, background: dm ? '#451a03' : '#fffbeb', border: `1px solid ${dm ? '#78350f' : '#fef3c7'}` }}>
               <span style={{ ...styles.cardLabel, color: '#0891b2' }}>FAILURES (24H)</span>
-              <div style={{ ...styles.cardValue, color: '#ef4444' }}>—</div>
-              <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>—% failure rate</div>
+              <div style={{ ...styles.cardValue, color: '#ef4444' }}>{loginStats ? loginStats.failures_24h : '—'}</div>
+              <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>{loginStats ? `${loginStats.failure_rate}% failure rate` : '—% failure rate'}</div>
             </div>
             <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
               <span style={{ ...styles.cardLabel, color: '#0891b2' }}>LOCKOUTS</span>
-              <div style={{ ...styles.cardValue, color: '#f97316' }}>—</div>
-              <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Accounts locked today</div>
+              <div style={{ ...styles.cardValue, color: '#f97316' }}>{loginStats ? loginStats.locked_users : '—'}</div>
+              <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Accounts locked</div>
             </div>
             <div style={{ ...styles.card, background: dm ? '#083344' : '#ecfeff', border: `1px solid ${dm ? '#164e63' : '#cffafe'}` }}>
               <span style={{ ...styles.cardLabel, color: '#0891b2' }}>GEO ANOMALIES</span>
@@ -417,40 +433,66 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
 
           <div style={styles.chartCard}>
             <div style={styles.chartHeader}><span style={styles.chartTitle}>HOURLY LOGIN EVENTS</span></div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: '28px', minWidth: '36px' }}>
-                {[20, 15, 10, 5, 0].map((v) => (
-                  <span key={v} style={{ fontSize: '12px', color: dm ? '#64748b' : '#0891b2' }}>{v}</span>
-                ))}
-              </div>
+            {(() => {
+              const CHART_H = 260
+              const SLOTS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
+              const buckets = SLOTS.map((label, i) => {
+                if (!loginHourly) return { label, successful: 0, failed: 0 }
+                const h = loginHourly.hours.find(x => x.hour === i) || {}
+                return { label, successful: h.successful || 0, failed: h.failed || 0 }
+              })
+              const yMax = 35
+              const yLabels = [35, 30, 25, 20, 15, 10, 5, 0]
 
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ flex: 1, position: 'relative', height: '200px' }}>
-                  <svg width="100%" height="100%" viewBox="0 0 800 200" preserveAspectRatio="none" style={{ display: 'block', position: 'absolute', top: 0, left: 0 }}>
-                    {[0, 50, 100, 150, 200].map((y) => (
-                      <line key={y} x1="0" y1={y} x2="800" y2={y} stroke={dm ? '#334155' : '#e2e8f0'} strokeWidth="1" strokeDasharray="4,4" />
-                    ))}
-                    {[0,1,2,3,4,5,6,7,8,9,10,11].map((i) => (
-                      <line key={i} x1={i * (800/11)} y1="0" x2={i * (800/11)} y2="200" stroke={dm ? '#334155' : '#e2e8f0'} strokeWidth="1" strokeDasharray="4,4" />
-                    ))}
-                  </svg>
-                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'flex-end', gap: '2px', padding: '0 4px' }}>
-                    {['00','02','04','06','08','10','12','14','16','18','20','22'].map((h) => (
-                      <div key={h} style={{ flex: 1, display: 'flex', gap: '2px', alignItems: 'flex-end', justifyContent: 'center' }}>
-                        <div style={{ width: '40%', background: '#ef4444', borderRadius: '2px 2px 0 0', height: '0px', minHeight: '0px' }} />
-                        <div style={{ width: '40%', background: '#10b981', borderRadius: '2px 2px 0 0', height: '0px', minHeight: '0px' }} />
-                      </div>
+              return (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {/* Y-axis */}
+                  <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-end', height: `${CHART_H}px`, paddingBottom: '0px', minWidth: '32px' }}>
+                    {yLabels.map((v) => (
+                      <span key={v} style={{ fontSize: '12px', color: dm ? '#64748b' : '#0891b2' }}>{v}</span>
                     ))}
                   </div>
-                </div>
 
-                <div style={{ display: 'flex', paddingTop: '8px' }}>
-                  {['00','02','04','06','08','10','12','14','16','18','20','22'].map((h) => (
-                    <div key={h} style={{ flex: 1, textAlign: 'center', fontSize: '12px', color: dm ? '#64748b' : '#6b7280' }}>{h}</div>
-                  ))}
+                  {/* Chart + X-axis */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {/* Bar area */}
+                    <div style={{ height: `${CHART_H}px`, position: 'relative', background: 'transparent' }}>
+                      {/* Gridlines */}
+                      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                        <div key={i} style={{ position: 'absolute', left: 0, right: 0, bottom: `${(i / 7) * CHART_H}px`, borderTop: `1px dashed ${dm ? '#334155' : '#e2e8f0'}` }} />
+                      ))}
+                      {/* Bars */}
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end', gap: '2px', paddingBottom: '1px' }}>
+                        {buckets.map(({ label, successful, failed }) => {
+                          const total = successful + failed
+                          const barH = Math.round((total / yMax) * CHART_H)
+                          const failH = total > 0 ? Math.round((failed / total) * barH) : 0
+                          const succH = barH - failH
+                          return (
+                            <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}>
+                              <div title={`Successful: ${successful}  Failed: ${failed}`}
+                                style={{ width: '30px', display: 'flex', flexDirection: 'column', borderRadius: '3px 3px 0 0', overflow: 'hidden' }}>
+                                {failH > 0 && <div style={{ height: `${failH}px`, background: '#ef4444' }} />}
+                                {succH > 0 && <div style={{ height: `${succH}px`, background: '#10b981' }} />}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* X-axis labels */}
+                    <div style={{ display: 'flex' }}>
+                      {SLOTS.map((h, i) => (
+                        <div key={h} style={{ flex: 1, textAlign: 'center', fontSize: '11px', color: dm ? '#64748b' : '#6b7280' }}>
+                          {i % 2 === 0 ? h : ''}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              )
+            })()}
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: '28px', marginTop: '16px' }}>
               {[{ color: '#ef4444', label: 'Failed' }, { color: '#10b981', label: 'Successful' }].map(({ color, label }) => (
