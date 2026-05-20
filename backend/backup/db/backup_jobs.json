@@ -1,0 +1,113 @@
+[
+  {
+    "id": "bkp-001",
+    "name": "PostgreSQL Primary",
+    "type": "Full",
+    "destination": "On-Prem NAS",
+    "status": "completed",
+    "last_run": "2026-05-20T21:32:45.299779+00:00",
+    "next_run": "2026-05-21T21:32:45.299779+00:00",
+    "size_gb": 135.8,
+    "integrity_hash": "671724e85b5f44c3b4eacf61a8d3acfa9b207052d17547fc2617d6aa2213bb38",
+    "integrity_verified": true,
+    "retention_days": 30,
+    "copies": 3,
+    "error_message": null,
+    "duration_seconds": 3683,
+    "schedule_cron": "0 2 * * *",
+    "created_at": "2026-02-19T21:05:20.614214+00:00",
+    "tags": [
+      "database",
+      "critical"
+    ]
+  },
+  {
+    "id": "bkp-002",
+    "name": "MongoDB Events",
+    "type": "Incremental",
+    "destination": "S3 Cloud",
+    "status": "completed",
+    "last_run": "2026-05-20T21:32:38.643414+00:00",
+    "next_run": "2026-05-21T21:32:38.643414+00:00",
+    "size_gb": 40.3,
+    "integrity_hash": "277ac90d0c734c513e8cde014a9b2a6665be3e096ae200caaa815fea1dc04554",
+    "integrity_verified": true,
+    "retention_days": 14,
+    "copies": 2,
+    "error_message": null,
+    "duration_seconds": 111,
+    "schedule_cron": "0 */6 * * *",
+    "created_at": "2026-03-21T21:05:20.614214+00:00",
+    "tags": [
+      "database",
+      "events"
+    ]
+  },
+  {
+    "id": "bkp-003",
+    "name": "File Server NAS",
+    "type": "Differential",
+    "destination": "Off-site Tape",
+    "status": "completed",
+    "last_run": "2026-05-20T21:31:07.189039+00:00",
+    "next_run": "2026-05-21T21:31:07.189039+00:00",
+    "size_gb": 13.2,
+    "integrity_hash": "7d0200960f704813e6ea7adc161794d28628bdf8334d11abdeaf90e01d60ba79",
+    "integrity_verified": true,
+    "retention_days": 90,
+    "copies": 3,
+    "error_message": null,
+    "duration_seconds": 2185,
+    "schedule_cron": "0 4 * * *",
+    "created_at": "2025-11-21T21:05:20.614214+00:00",
+    "tags": [
+      "files",
+      "tape"
+    ]
+  },
+  {
+    "id": "bkp-004",
+    "name": "Email Archives",
+    "type": "Full",
+    "destination": "S3 Cloud",
+    "status": "completed",
+    "last_run": "2026-05-19T21:05:20.614214+00:00",
+    "next_run": "2026-05-21T21:05:20.614214+00:00",
+    "size_gb": 287.3,
+    "integrity_hash": "1b41cb6aac9a1e13bbea91359ba5cd1358266e9ce1aebc223495a69b42628947",
+    "integrity_verified": true,
+    "retention_days": 365,
+    "copies": 5,
+    "error_message": null,
+    "duration_seconds": 5621,
+    "schedule_cron": "0 1 * * *",
+    "created_at": "2025-05-20T21:05:20.614214+00:00",
+    "tags": [
+      "email",
+      "compliance",
+      "long-retention"
+    ]
+  },
+  {
+    "id": "bkp-005",
+    "name": "Keycloak Config",
+    "type": "Full",
+    "destination": "On-Prem NAS",
+    "status": "completed",
+    "last_run": "2026-05-20T21:30:47.091359+00:00",
+    "next_run": "2026-05-21T21:30:47.091359+00:00",
+    "size_gb": 12.6,
+    "integrity_hash": "36ed850d74b9b5cb5c28242b56a26dd3a5ba5c5cd6ef52eb24a2f7ca2b05d6fb",
+    "integrity_verified": true,
+    "retention_days": 30,
+    "copies": 3,
+    "error_message": null,
+    "duration_seconds": 5190,
+    "schedule_cron": "0 3 * * 0",
+    "created_at": "2026-04-20T21:05:20.614214+00:00",
+    "tags": [
+      "auth",
+      "config"
+    ]
+  }
+]

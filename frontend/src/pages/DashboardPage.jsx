@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { users as usersAPI, roles as rolesAPI, activity as activityAPI, dashboard as dashboardAPI } from '../services/authService'
+import BackupManagementTab from '../components/BackupManagementTab'
 
 const NAV_ITEMS = [
   {
@@ -1491,164 +1492,11 @@ export default function DashboardPage({ onLogout, currentUser }) {
         {/* Page Header */}
         <div style={{ ...styles.card, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', boxSizing: 'border-box' }}>
           <div style={styles.headerLeft}>
-            {activePage === 'backup' ? (
-              <>
-                <h1 style={styles.pageTitle}>Backup Management</h1>
-                <p style={styles.pageSubtitle}>
-                  Automated Backup Status &mdash;{' '}
-                  <span style={styles.subtitleLink}>SHA-256 Integrity Verification</span>
-                </p>
-              </>
-            ) : activePage === 'access' ? (
-              <>
-                <h1 style={styles.pageTitle}>Role-Based Access Control</h1>
-                <p style={styles.pageSubtitle}>
-                  RBAC Management &mdash;{' '}
-                  <span style={styles.subtitleLink}>Keycloak / LDAP Integration</span>
-                </p>
-              </>
-            ) : activePage === 'incidents' ? (
-              <>
-                <h1 style={styles.pageTitle}>Incident Tickets</h1>
-                <p style={styles.pageSubtitle}>
-                  <span style={styles.subtitleLink}>SLA-Tracked Incident Response Lifecycle</span>
-                </p>
-              </>
-            ) : (
-              <>
-                <h1 style={styles.pageTitle}>IT Administrator</h1>
-                <p style={styles.pageSubtitle}>
-                  System Risk Overview &mdash;{' '}
-                  <span style={styles.subtitleLink}>Chinhoyi University of Technology</span>
-                </p>
-              </>
+            {activePage === 'backup' && (
+              <BackupManagementTab darkMode={darkMode} />
             )}
           </div>
-          <div style={styles.headerRight}>
-            <button 
-              onClick={handleDeclareIncident} 
-              style={{ ...styles.themeToggle, background: '#ef4444', color: 'white', borderColor: '#b91c1c', fontWeight: 'bold' }}>
-              Declare P1 Incident
-            </button>
-            <span style={styles.lastUpdated}>Last updated: —</span>
-            {/* Dark / Light mode toggle */}
-            <button onClick={() => setDarkMode(!dm)} style={styles.themeToggle} title={dm ? 'Switch to light mode' : 'Switch to dark mode'}>
-              {dm ? (
-                /* Sun icon */
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="5" />
-                  <line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" />
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                  <line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" />
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                </svg>
-              ) : (
-                /* Moon icon */
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                </svg>
-              )}
-            </button>
-          </div>
         </div>
-
-        {/* ── BACKUP STATUS PAGE ── */}
-        {activePage === 'backup' && <>
-          <div style={styles.cardGrid}>
-            <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
-              <span style={styles.cardLabel}>JOBS VERIFIED</span>
-              <div style={styles.splitValue}>
-                <span style={{ color: '#16a34a', fontSize: '34px', fontWeight: '800' }}>—</span>
-                <span style={{ color: dm ? '#475569' : '#9ca3af', fontSize: '34px', fontWeight: '800', margin: '0 4px' }}>/</span>
-                <span style={{ color: dm ? '#475569' : '#9ca3af', fontSize: '34px', fontWeight: '800' }}>—</span>
-              </div>
-              <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>— require attention</div>
-            </div>
-
-            <div style={{ ...styles.card, background: dm ? '#451a03' : '#fffbeb', border: `1px solid ${dm ? '#78350f' : '#fef3c7'}` }}>
-              <span style={styles.cardLabel}>FAILED JOBS</span>
-              <div style={{ fontSize: '34px', fontWeight: '800', color: '#ef4444', lineHeight: '1' }}>—</div>
-              <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>— ago</div>
-            </div>
-
-            <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
-              <span style={styles.cardLabel}>TOTAL BACKUP SIZE</span>
-              <div style={{ fontSize: '34px', fontWeight: '800', color: '#0891b2', lineHeight: '1' }}>— GB</div>
-              <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>Across all destinations</div>
-            </div>
-
-            <div style={{ ...styles.card, background: dm ? '#083344' : '#ecfeff', border: `1px solid ${dm ? '#164e63' : '#cffafe'}` }}>
-              <span style={styles.cardLabel}>NEXT FULL BACKUP</span>
-              <div style={{ fontSize: '34px', fontWeight: '800', color: '#f59e0b', lineHeight: '1' }}>--:--</div>
-              <div style={{ ...styles.cardMeta, color: dm ? '#94a3b8' : '#6b7280' }}>In — h —m</div>
-            </div>
-          </div>
-
-          <div style={styles.chartCard}>
-            <div style={styles.chartHeader}><span style={styles.chartTitle}>BACKUP JOB STATUS</span></div>
-            <table style={styles.table}>
-              <thead>
-                <tr>{['Job Name', 'Last Run', 'Size', 'Integrity', 'Status'].map((col) => (
-                  <th key={col} style={styles.th}>{col}</th>
-                ))}</tr>
-              </thead>
-              <tbody>
-                {['PostgreSQL Primary', 'MongoDB Events', 'File Server NAS', 'Email Archives', 'Keycloak Config', 'Redis Snapshot'].map((job) => (
-                  <tr key={job}>
-                    <td style={{ ...styles.td, fontWeight: '600', color: dm ? '#f1f5f9' : '#111827' }}>{job}</td>
-                    <td style={styles.td}>—</td>
-                    <td style={styles.td}>—</td>
-                    <td style={styles.td}>—</td>
-                    <td style={styles.td}><span style={styles.badgeNeutral}>—</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={styles.chartCard}>
-            <div style={styles.chartHeader}><span style={styles.chartTitle}>STORAGE UTILIZATION</span></div>
-            <div style={styles.storageList}>
-              {[
-                { label: 'On-Prem NAS', barColor: 'linear-gradient(to right, #f97316, #ef4444)' },
-                { label: 'S3 Cloud', barColor: '#06b6d4' },
-                { label: 'Off-site Tape', barColor: '#06b6d4' },
-              ].map(({ label, barColor }) => (
-                <div key={label} style={styles.storageRow}>
-                  <div style={styles.storageRowHeader}>
-                    <span style={styles.storageLabel}>{label}</span>
-                    <span style={styles.storageMeta}>—% of —</span>
-                  </div>
-                  <div style={styles.storageTrack}>
-                    <div style={{ ...styles.storageBar, background: barColor, width: '0%' }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={styles.chartCard}>
-            <div style={styles.chartHeader}><span style={styles.chartTitle}>RETENTION SCHEDULE</span></div>
-            <div style={styles.retentionList}>
-              {[
-                { label: 'Daily Snapshots', sub: '— days' },
-                { label: 'Weekly Snapshots', sub: '— weeks' },
-                { label: 'Monthly Archives', sub: '— months' },
-              ].map(({ label, sub }, i) => (
-                <div key={label} style={{ ...styles.retentionRow, borderBottom: i < 2 ? `1px solid ${dm ? '#334155' : '#f3f4f6'}` : 'none' }}>
-                  <div>
-                    <div style={styles.retentionLabel}>{label}</div>
-                    <div style={styles.retentionSub}>{sub}</div>
-                  </div>
-                  <div style={styles.copiesBadge}>
-                    <span style={styles.copiesNum}>—</span>
-                    <span style={styles.copiesText}> copies</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>}
 
         {/* ── ROLE PROFILE PAGE ── */}
         {activePage === 'access' && managingRole && (
