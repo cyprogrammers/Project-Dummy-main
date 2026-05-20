@@ -133,7 +133,6 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
             <p style={styles.pageSubtitle}>{header.subtitle}</p>
           </div>
           <div style={styles.headerRight}>
-            <span style={styles.lastUpdated}>Last updated: —</span>
             <button
               onClick={() => setDarkMode(!dm)}
               style={styles.themeToggle}
