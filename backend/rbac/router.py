@@ -103,7 +103,7 @@ class RoleUpdate(BaseModel):
 
 class RoleOut(BaseModel):
     id: int; name: str; description: Optional[str]; frontend_key: Optional[str]
-    mfa_requirement: MFARequirement; is_system_role: bool; user_count: int = 0
+    mfa_requirement: MFARequirement; is_system_role: bool; user_count: int = 0; active_user_count: int = 0
     model_config = {"from_attributes": True}
 
 class PermOut(BaseModel):
@@ -668,7 +668,10 @@ async def list_roles(db: AsyncSession = Depends(get_db),
     )).scalars().all()
     result = []
     for r in roles:
-        out = RoleOut.model_validate(r); out.user_count = len(r.users); result.append(out)
+        out = RoleOut.model_validate(r)
+        out.user_count = len(r.users)
+        out.active_user_count = sum(1 for u in r.users if u.status == UserStatus.active)
+        result.append(out)
     return result
 
 
@@ -980,6 +983,9 @@ async def rbac_dashboard_stats(
 ):
     await au.expire_stale_sessions(db)
     total     = (await db.execute(select(func.count(RBACUser.id)))).scalar_one()
+    active    = (await db.execute(
+        select(func.count(RBACUser.id)).where(RBACUser.status == UserStatus.active)
+    )).scalar_one()
     mfa_count = (await db.execute(
         select(func.count(RBACUser.id)).where(RBACUser.mfa_enabled == True)
     )).scalar_one()
@@ -996,8 +1002,73 @@ async def rbac_dashboard_stats(
     )).scalar_one()
     return {
         "total_users":       total,
+        "active_users":      active,
         "mfa_enabled":       mfa_count,
         "mfa_adoption_rate": round(mfa_count / total * 100, 1) if total else 0,
         "pending_approvals": pending,
         "pam_sessions":      pam,
     }
+
+
+@router.get("/dashboard/login-stats")
+async def rbac_login_stats(
+    db: AsyncSession = Depends(get_db),
+    _: RBACUser = Depends(au.get_current_rbac_user),
+):
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    logins_24h = (await db.execute(
+        select(func.count(RBACActivityLog.id)).where(
+            RBACActivityLog.action == ActivityAction.login,
+            RBACActivityLog.result == ActivityResult.success,
+            RBACActivityLog.timestamp >= cutoff,
+        )
+    )).scalar_one()
+
+    failures_24h = (await db.execute(
+        select(func.count(RBACActivityLog.id)).where(
+            RBACActivityLog.action == ActivityAction.login_failed,
+            RBACActivityLog.timestamp >= cutoff,
+        )
+    )).scalar_one()
+
+    locked_users = (await db.execute(
+        select(func.count(RBACUser.id)).where(RBACUser.status == UserStatus.locked)
+    )).scalar_one()
+
+    total_attempts = logins_24h + failures_24h
+    failure_rate = round(failures_24h / total_attempts * 100, 1) if total_attempts else 0.0
+
+    return {
+        "logins_24h":   logins_24h,
+        "failures_24h": failures_24h,
+        "failure_rate": failure_rate,
+        "locked_users": locked_users,
+    }
+
+
+@router.get("/dashboard/login-hourly")
+async def rbac_login_hourly(
+    db: AsyncSession = Depends(get_db),
+    _: RBACUser = Depends(au.get_current_rbac_user),
+):
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    logs = (await db.execute(
+        select(RBACActivityLog.timestamp, RBACActivityLog.action, RBACActivityLog.result).where(
+            RBACActivityLog.action.in_([ActivityAction.login, ActivityAction.login_failed]),
+            RBACActivityLog.timestamp >= cutoff,
+        )
+    )).all()
+
+    hourly: dict[int, dict] = {h: {"successful": 0, "failed": 0} for h in range(24)}
+    for ts, action, result in logs:
+        h = ts.hour
+        if action == ActivityAction.login and result == ActivityResult.success:
+            hourly[h]["successful"] += 1
+        else:
+            hourly[h]["failed"] += 1
+
+    return {"hours": [{"hour": h, **counts} for h, counts in hourly.items()]}

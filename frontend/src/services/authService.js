@@ -165,7 +165,9 @@ export const activity = {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export const dashboard = {
-  rbacStats: () => apiCall("/dashboard/stats"),
+  rbacStats:    () => apiCall("/dashboard/stats"),
+  loginStats:   () => apiCall("/dashboard/login-stats"),
+  loginHourly:  () => apiCall("/dashboard/login-hourly"),
 };
 
 // ─── Auto-refresh interceptor ─────────────────────────────────────────────────
