@@ -152,7 +152,7 @@ async def seed():
                 existing = RBACModule(**md)
                 db.add(existing)
                 await db.flush()
-                print(f"  ✓ Module:  {md['name']}")
+                print(f"   Module:  {md['name']}")
             module_map[md["name"]] = existing
 
         # ── Roles + Settings + Permissions ───────────────────────────────────
@@ -164,7 +164,7 @@ async def seed():
                 existing = RBACRole(**rd)
                 db.add(existing)
                 await db.flush()
-                print(f"  ✓ Role:    {rd['name']}")
+                print(f"   Role:    {rd['name']}")
                 # Settings
                 db.add(RBACRoleSettings(role_id=existing.id, **settings_data))
                 # Permissions
@@ -194,14 +194,14 @@ async def seed():
                 role = role_map.get(ud["role"])
                 if role:
                     db.add(RBACUserRole(user_id=new_user.id, role_id=role.id, assigned_by=new_user.id))
-                print(f"  ✓ User:    {ud['email']}  /  {ud['password']}")
+                print(f"   User:    {ud['email']}  /  {ud['password']}")
                 if ud["role"] == "it-admin" and admin_user is None:
                     admin_user = new_user
         else:
             print(f"  ℹ  Skipping user seed — {user_count} user(s) already in database.")
 
         await db.commit()
-        print("\n✅ RBAC seed complete!")
+        print("\n RBAC seed complete!")
         print("\nDefault credentials:")
         for ud in DEFAULT_USERS:
             print(f"   {ud['email']:<30}  {ud['password']}")

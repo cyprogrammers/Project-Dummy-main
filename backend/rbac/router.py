@@ -5,8 +5,13 @@ All RBAC endpoints mounted under  /api/v1/rbac/
 Includes: auth login/logout/refresh/MFA, users CRUD, roles CRUD,
           permissions matrix, role settings, sessions, activity trail.
 """
+import asyncio
 import math
 from typing import Any, Dict, List, Optional
+
+import pyotp
+from services.email_service import send_mfa_code, send_welcome_email
+from services.otp_store import otp_store
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -181,7 +186,6 @@ async def login(
     ua = request.headers.get("User-Agent", "")
 
     # Fetch user with roles eagerly loaded
-    from sqlalchemy.orm import selectinload
     res  = await db.execute(
         select(RBACUser)
         .where(RBACUser.email == body.email)
@@ -217,18 +221,38 @@ async def login(
                                target_user=user, details={"email": user.email, "attempts": user.failed_login_attempts}, ip_address=ip)
         raise HTTPException(401, "Invalid email or password")
 
-    # MFA check
+    # ── MFA check (email OTP) ──────────────────────────────────────────────
     mfa_required = user.mfa_enabled or any(r.settings and r.settings.require_mfa for r in user.roles)
     if mfa_required:
         if not body.totp_code:
+            # Step 1 — password correct, no OTP yet: generate, store and email it
+            code = await otp_store.create(user.id)
+            asyncio.create_task(
+                asyncio.to_thread(
+                    send_mfa_code,
+                    user.email,
+                    f"{user.first_name} {user.surname}",
+                    code,
+                )
+            )
             return LoginOut(
                 token=TokenOut(access_token="", refresh_token="", expires_in=0),
-                user=UserOut.model_validate(user), mfa_required=True, message="MFA code required",
+                user=UserOut.model_validate(user),
+                mfa_required=True,
+                message="A verification code has been sent to your email address.",
             )
-        if not user.mfa_secret or not au.verify_totp(user.mfa_secret, body.totp_code):
+
+        # Step 2 — OTP submitted: verify against stored code
+        code_valid = await otp_store.verify(user.id, body.totp_code)
+        if not code_valid:
+            still_pending = await otp_store.has_pending(user.id)
             await au.log_activity(db, ActivityAction.login_failed, ActivityResult.failed,
-                                   target_user=user, details={"reason": "bad MFA"}, ip_address=ip)
-            raise HTTPException(401, "Invalid MFA code")
+                                   target_user=user, details={"reason": "invalid or expired email OTP"}, ip_address=ip)
+            if still_pending:
+                raise HTTPException(401, "Incorrect code — please try again.")
+            else:
+                raise HTTPException(401, "Code has expired or was already used. Sign in again to receive a new one.")
+    # ──────────────────────────────────────────────────────────────────────────
 
     # Check user-level permission overrides — if admin revoked all read access, block login
     user_perms = (await db.execute(
@@ -358,7 +382,6 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     _: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    from sqlalchemy.orm import selectinload
     q = select(RBACUser).options(selectinload(RBACUser.roles))
     if role_id:
         q = q.join(RBACUserRole, RBACUser.id == RBACUserRole.user_id).where(RBACUserRole.role_id == role_id)
@@ -399,13 +422,32 @@ async def create_user(
     await au.log_activity(db, ActivityAction.user_create, ActivityResult.success,
                            actor=actor, target_user=user, details={"roles": body.role_ids},
                            ip_address=au.get_client_ip(request))
+
+    # ── Welcome email ─────────────────────────────────────────────────────────
+    role_label = "System User"
+    if body.role_ids:
+        role_rec = (await db.execute(
+            select(RBACRole).where(RBACRole.id == body.role_ids[0])
+        )).scalars().first()
+        if role_rec:
+            role_label = role_rec.name
+    asyncio.create_task(
+        asyncio.to_thread(
+            send_welcome_email,
+            user.email,
+            f"{user.first_name} {user.surname}",
+            role_label,
+            body.password,
+        )
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     return user
 
 
 @router.get("/users/{uid}", response_model=UserOut)
 async def get_user(uid: int, db: AsyncSession = Depends(get_db),
                    _: RBACUser = Depends(au.get_current_rbac_user)):
-    from sqlalchemy.orm import selectinload
     u = (await db.execute(
         select(RBACUser).options(selectinload(RBACUser.roles)).where(RBACUser.id == uid)
     )).scalars().first()
@@ -419,7 +461,6 @@ async def update_user(
     request: Request, uid: int, body: UserUpdate,
     db: AsyncSession = Depends(get_db), actor: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    from sqlalchemy.orm import selectinload
     u = (await db.execute(
         select(RBACUser).options(selectinload(RBACUser.roles)).where(RBACUser.id == uid)
     )).scalars().first()
@@ -537,7 +578,6 @@ async def get_user_permissions(
     db: AsyncSession = Depends(get_db),
     _: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    """Return effective permissions for a user: role defaults merged with any user-specific overrides."""
     u = (await db.execute(
         select(RBACUser).where(RBACUser.id == uid).options(selectinload(RBACUser.roles))
     )).scalars().first()
@@ -546,7 +586,6 @@ async def get_user_permissions(
 
     modules = (await db.execute(select(RBACModule).where(RBACModule.is_active == True))).scalars().all()
 
-    # Build role-level baseline (OR of all roles the user belongs to)
     role_ids = [r.id for r in u.roles]
     role_perms: dict[int, dict] = {}
     if role_ids:
@@ -563,7 +602,6 @@ async def get_user_permissions(
                 "can_admin":  existing.get("can_admin",  False) or rp.can_admin,
             }
 
-    # Load user-specific overrides
     up_rows = (await db.execute(
         select(RBACUserPermission).where(RBACUserPermission.user_id == uid)
     )).scalars().all()
@@ -597,7 +635,6 @@ async def update_user_permissions(
     request: Request, uid: int, body: BulkUserPermUpdate,
     db: AsyncSession = Depends(get_db), actor: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    """Save user-specific permission overrides (upsert per module)."""
     u = (await db.execute(select(RBACUser).where(RBACUser.id == uid))).scalars().first()
     if not u:
         raise HTTPException(404, "User not found")
@@ -627,7 +664,6 @@ async def update_user_permissions(
 
     await db.commit()
 
-    # Auto-suspend if all read access revoked; auto-reactivate if at least one module restored
     has_read = any(pu.can_read for pu in body.permissions)
     status_note = ""
     if body.permissions and not has_read and u.status == UserStatus.active:
@@ -662,7 +698,6 @@ async def update_user_permissions(
 @router.get("/roles", response_model=List[RoleOut])
 async def list_roles(db: AsyncSession = Depends(get_db),
                      _: RBACUser = Depends(au.get_current_rbac_user)):
-    from sqlalchemy.orm import selectinload
     roles = (await db.execute(
         select(RBACRole).options(selectinload(RBACRole.users))
     )).scalars().all()
@@ -697,7 +732,6 @@ async def create_role(
 @router.get("/roles/{rid}", response_model=RoleOut)
 async def get_role(rid: int, db: AsyncSession = Depends(get_db),
                    _: RBACUser = Depends(au.get_current_rbac_user)):
-    from sqlalchemy.orm import selectinload
     r = (await db.execute(
         select(RBACRole).where(RBACRole.id == rid).options(selectinload(RBACRole.users))
     )).scalars().first()
@@ -712,7 +746,6 @@ async def update_role(
     rid: int, body: RoleUpdate,
     db: AsyncSession = Depends(get_db), _: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    from sqlalchemy.orm import selectinload
     r = (await db.execute(
         select(RBACRole).where(RBACRole.id == rid).options(selectinload(RBACRole.users))
     )).scalars().first()
@@ -732,7 +765,6 @@ async def delete_role(
     request: Request, rid: int,
     db: AsyncSession = Depends(get_db), actor: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    from sqlalchemy.orm import selectinload
     r = (await db.execute(
         select(RBACRole).where(RBACRole.id == rid).options(selectinload(RBACRole.users))
     )).scalars().first()
@@ -785,7 +817,6 @@ async def remove_user_from_role(
 @router.get("/roles/{rid}/permissions", response_model=List[PermOut])
 async def get_permissions(rid: int, db: AsyncSession = Depends(get_db),
                            _: RBACUser = Depends(au.get_current_rbac_user)):
-    from sqlalchemy.orm import selectinload
     perms = (await db.execute(
         select(RBACPermission)
         .where(RBACPermission.role_id == rid)
@@ -829,7 +860,6 @@ async def update_permissions(
 @router.get("/roles/{rid}/settings", response_model=SettingsOut)
 async def get_settings(rid: int, db: AsyncSession = Depends(get_db),
                         _: RBACUser = Depends(au.get_current_rbac_user)):
-    from sqlalchemy.orm import selectinload
     r = (await db.execute(
         select(RBACRole).where(RBACRole.id == rid).options(selectinload(RBACRole.settings))
     )).scalars().first()
@@ -843,7 +873,6 @@ async def update_settings(
     request: Request, rid: int, body: SettingsUpdate,
     db: AsyncSession = Depends(get_db), actor: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    from sqlalchemy.orm import selectinload
     r = (await db.execute(
         select(RBACRole).where(RBACRole.id == rid).options(selectinload(RBACRole.settings))
     )).scalars().first()
@@ -924,7 +953,7 @@ async def list_activity(
     result: Optional[ActivityResult] = None,
     actor_id: Optional[int] = None,
     role_id:  Optional[int] = None,
-    actor_ids: Optional[str] = None,   # comma-separated user IDs
+    actor_ids: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _: RBACUser = Depends(au.get_current_rbac_user),
 ):
@@ -936,8 +965,6 @@ async def list_activity(
     if actor_ids:
         ids = [int(i) for i in actor_ids.split(",") if i.strip().isdigit()]
         if ids:
-            # show events where any of these users is the actor OR the target,
-            # OR the event is directly tagged to the role
             conditions = [
                 RBACActivityLog.actor_id.in_(ids),
                 RBACActivityLog.target_user_id.in_(ids),

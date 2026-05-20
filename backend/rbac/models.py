@@ -1,5 +1,4 @@
 """
-backend/rbac/models.py
 ======================
 Async SQLAlchemy models for the RBAC subsystem.
 Extends the existing AITRMS Base from db/database.py.
@@ -19,7 +18,7 @@ from sqlalchemy.sql import func
 from db.database import Base
 
 
-# ─── Enums ───────────────────────────────────────────────────────────────────
+# ─── Enums ─────────────
 
 class UserStatus(str, enum.Enum):
     active    = "active"
