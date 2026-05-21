@@ -142,7 +142,7 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
     if (activePage === 'attack-storyline') loadStorylines()
     if (activePage === 'login-monitor') {
       loadLoginStats()
-      const interval = setInterval(loadLoginStats, 30000)
+      const interval = setInterval(loadLoginStats, 15000)
       return () => clearInterval(interval)
     }
   }, [activePage])
@@ -432,7 +432,13 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
           </div>
 
           <div style={styles.chartCard}>
-            <div style={styles.chartHeader}><span style={styles.chartTitle}>HOURLY LOGIN EVENTS</span></div>
+            <div style={{ ...styles.chartHeader, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={styles.chartTitle}>HOURLY LOGIN EVENTS</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 6px #22c55e' }} />
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#22c55e', letterSpacing: '0.5px' }}>LIVE · TODAY</span>
+              </div>
+            </div>
             {(() => {
               const CHART_H = 260
               const SLOTS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))

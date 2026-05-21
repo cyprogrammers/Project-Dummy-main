@@ -168,8 +168,8 @@ export const activity = {
 
 export const dashboard = {
   rbacStats:    () => apiCall("/dashboard/stats"),
-  loginStats:   () => apiCall("/dashboard/login-stats"),
-  loginHourly:  () => apiCall("/dashboard/login-hourly"),
+  loginStats:   () => { const tz = -new Date().getTimezoneOffset(); return apiCall(`/dashboard/login-stats?tz_offset=${tz}`); },
+  loginHourly:  () => { const tz = -new Date().getTimezoneOffset(); return apiCall(`/dashboard/login-hourly?tz_offset=${tz}`); },
 };
 
 // ─── Auto-refresh interceptor ─────────────────────────────────────────────────
