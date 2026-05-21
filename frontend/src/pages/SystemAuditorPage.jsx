@@ -62,24 +62,76 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [darkMode, setDarkMode] = useState(false)
   const [auditLogs, setAuditLogs] = useState([])
   const [auditLoading, setAuditLoading] = useState(false)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [showFilter, setShowFilter] = useState(false)
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo, setFilterTo] = useState('')
+  const [appliedFrom, setAppliedFrom] = useState('')
+  const [appliedTo, setAppliedTo] = useState('')
 
   useEffect(() => {
-    const fetchLogs = async () => {
-      setAuditLoading(true)
+    let active = true
+
+    const fetchAllLogs = async () => {
+      const PAGE = 200
+      let page = 1
+      let all = []
+      while (true) {
+        const batch = await activityAPI.list({ page_size: PAGE, page })
+        if (!Array.isArray(batch) || batch.length === 0) break
+        all = [...all, ...batch]
+        if (batch.length < PAGE) break
+        page++
+      }
+      return all
+    }
+
+    const fetchLogs = async (showSpinner = false) => {
+      if (showSpinner) setAuditLoading(true)
       try {
-        const logs = await activityAPI.list({ page_size: 50 })
-        setAuditLogs(logs)
+        const logs = await fetchAllLogs()
+        if (active) {
+          setAuditLogs(logs)
+          setLastRefreshed(new Date())
+        }
       } catch (err) {
         console.error('Failed to fetch audit logs:', err)
       } finally {
-        setAuditLoading(false)
+        if (showSpinner) setAuditLoading(false)
       }
     }
-    fetchLogs()
+
+    fetchLogs(true)
+    const interval = setInterval(() => fetchLogs(false), 5000)
+    return () => { active = false; clearInterval(interval) }
   }, [])
   const dm = darkMode
   const styles = makeStyles(dm)
   const header = PAGE_HEADERS[activePage]
+
+  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000
+  const count24h = auditLogs.filter(log => {
+    if (!log.timestamp) return false
+    const ts = /[Z+]/.test(log.timestamp) ? log.timestamp : log.timestamp + 'Z'
+    return new Date(ts).getTime() >= cutoff24h
+  }).length
+
+  const toMs = (ts) => {
+    if (!ts) return null
+    const s = /[Z+]/.test(ts) ? ts : ts + 'Z'
+    return new Date(s).getTime()
+  }
+  const filteredLogs = auditLogs.filter(log => {
+    if (!appliedFrom && !appliedTo) return true
+    const ms = toMs(log.timestamp)
+    if (ms === null) return false
+    if (appliedFrom && ms < new Date(appliedFrom).getTime()) return false
+    if (appliedTo && ms > new Date(appliedTo + 'T23:59:59.999Z').getTime()) return false
+    return true
+  })
+
+  const applyFilter = () => setAppliedFrom(filterFrom) || setAppliedTo(filterTo)
+  const clearFilter = () => { setFilterFrom(''); setFilterTo(''); setAppliedFrom(''); setAppliedTo('') }
 
   return (
     <div style={styles.wrapper}>
@@ -177,8 +229,10 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
         <div style={styles.cardGrid4}>
           <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce7'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>EVENTS (24H)</span>
-            <div style={{ ...styles.cardValue, color: '#16a34a' }}>—</div>
-            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>All events logged</div>
+            <div style={{ ...styles.cardValue, color: '#16a34a' }}>{auditLoading ? '…' : count24h}</div>
+            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>
+              {lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString()}` : 'Loading…'}
+            </div>
           </div>
           <div style={{ ...styles.card, background: dm ? '#451a03' : '#fffbeb', border: `1px solid ${dm ? '#78350f' : '#fef3c7'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>ACCESS CHANGES</span>
@@ -202,7 +256,48 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
             <div style={styles.alertsTitleRow}>
               <span style={styles.alertsTitle}>{header.panelTitle}</span>
             </div>
+            {activePage === 'audit-trail' && (
+              <button
+                onClick={() => setShowFilter(f => !f)}
+                style={{ ...styles.viewAllBtn, display: 'flex', alignItems: 'center', gap: '6px', background: showFilter ? (dm ? '#1e40af' : '#eff6ff') : undefined, borderColor: showFilter ? '#3b82f6' : undefined, color: showFilter ? '#3b82f6' : undefined }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                </svg>
+                Filter by Date
+              </button>
+            )}
           </div>
+
+          {activePage === 'audit-trail' && showFilter && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0 16px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: dm ? '#94a3b8' : '#6b7280', whiteSpace: 'nowrap' }}>FROM</label>
+                <input
+                  type="date"
+                  value={filterFrom}
+                  onChange={e => setFilterFrom(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#0f172a' : '#f9fafb', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: dm ? '#94a3b8' : '#6b7280', whiteSpace: 'nowrap' }}>TO</label>
+                <input
+                  type="date"
+                  value={filterTo}
+                  onChange={e => setFilterTo(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#0f172a' : '#f9fafb', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+              <button onClick={applyFilter} style={{ padding: '6px 16px', borderRadius: '8px', border: 'none', background: '#1d4ed8', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Apply</button>
+              {(appliedFrom || appliedTo) && (
+                <button onClick={clearFilter} style={{ padding: '6px 16px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: 'transparent', color: dm ? '#94a3b8' : '#6b7280', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
+              )}
+              {(appliedFrom || appliedTo) && (
+                <span style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>Showing {filteredLogs.length} of {auditLogs.length} events</span>
+              )}
+            </div>
+          )}
 
           {activePage === 'audit-trail' ? (
             <div style={styles.tableWrapper}>
@@ -217,9 +312,9 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                 <tbody>
                   {auditLoading ? (
                     <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading audit events…</td></tr>
-                  ) : auditLogs.length === 0 ? (
-                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No audit events recorded yet</td></tr>
-                  ) : auditLogs.map((log, i, arr) => {
+                  ) : filteredLogs.length === 0 ? (
+                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>{auditLogs.length === 0 ? 'No audit events recorded yet' : 'No events match the selected date range'}</td></tr>
+                  ) : filteredLogs.map((log, i, arr) => {
                     const r = String(log.result).toUpperCase()
                     const resultColor = r === 'SUCCESS'  ? { background: '#d1fae5', color: '#065f46', border: '1px solid #10b981' }
                                       : r === 'FAILED'   ? { background: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444' }
