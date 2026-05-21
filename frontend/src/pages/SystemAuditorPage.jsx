@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { activity as activityAPI } from '../services/authService'
 
 const NAV_ITEMS = [
   {
@@ -59,6 +60,23 @@ const PLACEHOLDER_ROWS = [1, 2, 3, 4]
 export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('audit-trail')
   const [darkMode, setDarkMode] = useState(false)
+  const [auditLogs, setAuditLogs] = useState([])
+  const [auditLoading, setAuditLoading] = useState(false)
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      setAuditLoading(true)
+      try {
+        const logs = await activityAPI.list({ page_size: 50 })
+        setAuditLogs(logs)
+      } catch (err) {
+        console.error('Failed to fetch audit logs:', err)
+      } finally {
+        setAuditLoading(false)
+      }
+    }
+    fetchLogs()
+  }, [])
   const dm = darkMode
   const styles = makeStyles(dm)
   const header = PAGE_HEADERS[activePage]
@@ -182,10 +200,8 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
         <div style={styles.chartCard}>
           <div style={styles.alertsHeader}>
             <div style={styles.alertsTitleRow}>
-              <span style={styles.liveDotPulse} />
               <span style={styles.alertsTitle}>{header.panelTitle}</span>
             </div>
-            <button style={styles.viewAllBtn}>View All</button>
           </div>
 
           {activePage === 'audit-trail' ? (
@@ -193,12 +209,47 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    {['TIMESTAMP', 'ACTOR', 'ACTION', 'TARGET', 'IP ADDRESS'].map((col) => (
+                    {['TIMESTAMP', 'ACTOR', 'ACTION', 'TARGET', 'IP ADDRESS', 'RESULT'].map((col) => (
                       <th key={col} style={styles.th}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
+                  {auditLoading ? (
+                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading audit events…</td></tr>
+                  ) : auditLogs.length === 0 ? (
+                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>No audit events recorded yet</td></tr>
+                  ) : auditLogs.map((log, i, arr) => {
+                    const r = String(log.result).toUpperCase()
+                    const resultColor = r === 'SUCCESS'  ? { background: '#d1fae5', color: '#065f46', border: '1px solid #10b981' }
+                                      : r === 'FAILED'   ? { background: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444' }
+                                      : r === 'PENDING'  ? { background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }
+                                      : r === 'ENFORCED' ? { background: '#ffedd5', color: '#9a3412', border: '1px solid #f97316' }
+                                      : r === 'DENIED'   ? { background: '#ede9fe', color: '#5b21b6', border: '1px solid #7c3aed' }
+                                      :                    { background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }
+                    return (
+                      <tr key={log.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
+                        <td style={styles.tdTimestamp}>{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                        <td style={{ ...styles.td, color: dm ? '#93c5fd' : '#0891b2', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {log.actor_email || '—'}
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', border: `1px solid ${dm ? '#0891b2' : '#67e8f9'}`, color: dm ? '#22d3ee' : '#0891b2', background: 'transparent' }}>
+                            {String(log.action).toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ ...styles.td, color: dm ? '#94a3b8' : '#6b7280', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {log.target_user_email || log.role_name || '—'}
+                        </td>
+                        <td style={styles.td}>{log.ip_address || '—'}</td>
+                        <td style={styles.td}>
+                          <span style={{ display: 'inline-block', padding: '3px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', ...resultColor }}>
+                            {r === 'FAILED' ? 'BLOCKED' : r}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
