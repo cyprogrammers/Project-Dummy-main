@@ -109,26 +109,36 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
   const styles = makeStyles(dm)
   const header = PAGE_HEADERS[activePage]
 
-  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000
-  const count24h = auditLogs.filter(log => {
-    if (!log.timestamp) return false
-    const ts = /[Z+]/.test(log.timestamp) ? log.timestamp : log.timestamp + 'Z'
-    return new Date(ts).getTime() >= cutoff24h
-  }).length
-
   const toMs = (ts) => {
     if (!ts) return null
     const s = /[Z+]/.test(ts) ? ts : ts + 'Z'
     return new Date(s).getTime()
   }
+
+  const filterActive = !!(appliedFrom || appliedTo)
+
   const filteredLogs = auditLogs.filter(log => {
-    if (!appliedFrom && !appliedTo) return true
+    if (!filterActive) return true
     const ms = toMs(log.timestamp)
     if (ms === null) return false
     if (appliedFrom && ms < new Date(appliedFrom).getTime()) return false
     if (appliedTo && ms > new Date(appliedTo + 'T23:59:59.999Z').getTime()) return false
     return true
   })
+
+  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000
+  const count24h = filterActive
+    ? filteredLogs.length
+    : auditLogs.filter(log => {
+        if (!log.timestamp) return false
+        const ts = /[Z+]/.test(log.timestamp) ? log.timestamp : log.timestamp + 'Z'
+        return new Date(ts).getTime() >= cutoff24h
+      }).length
+
+  const blockedCount = (filterActive ? filteredLogs : auditLogs).filter(log => {
+    const r = String(log.result).toUpperCase()
+    return r === 'FAILED' || r === 'ENFORCED'
+  }).length
 
   const applyFilter = () => setAppliedFrom(filterFrom) || setAppliedTo(filterTo)
   const clearFilter = () => { setFilterFrom(''); setFilterTo(''); setAppliedFrom(''); setAppliedTo('') }
@@ -241,7 +251,7 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
           </div>
           <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>BLOCKED EVENTS</span>
-            <div style={{ ...styles.cardValue, color: '#ef4444' }}>—</div>
+            <div style={{ ...styles.cardValue, color: '#ef4444' }}>{auditLoading ? '…' : blockedCount}</div>
             <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Brute-force + scans</div>
           </div>
           <div style={{ ...styles.card, background: dm ? '#083344' : '#ecfeff', border: `1px solid ${dm ? '#164e63' : '#cffafe'}` }}>
