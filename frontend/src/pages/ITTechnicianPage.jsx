@@ -73,7 +73,8 @@ export default function ITTechnicianPage({ onLogout, currentUser }) {
             </div>
           </div>
           {onLogout && (
-            <button onClick={onLogout} style={styles.logoutBtn} title="Log out">
+            <button onClick={onLogout} style={styles.logoutBtn}>
+              <span>LOGOUT</span>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -300,8 +301,9 @@ const makeStyles = (dm) => ({
   },
   profile: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: '10px',
     padding: '14px 24px',
     borderTop: `1px solid ${dm ? '#334155' : '#f3f4f6'}`,
     flexShrink: 0,
@@ -337,15 +339,21 @@ const makeStyles = (dm) => ({
     color: dm ? '#94a3b8' : '#64748b',
   },
   logoutBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: dm ? '#94a3b8' : '#64748b',
-    padding: '6px',
-    borderRadius: '8px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: '8px',
+    width: '100%',
+    padding: '8px 14px',
+    borderRadius: '999px',
+    border: `1.5px solid ${dm ? '#475569' : '#d1d5db'}`,
+    background: dm ? 'transparent' : 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '700',
+    letterSpacing: '0.8px',
+    color: dm ? '#94a3b8' : '#374151',
+    boxSizing: 'border-box',
   },
   main: {
     flex: 1,
