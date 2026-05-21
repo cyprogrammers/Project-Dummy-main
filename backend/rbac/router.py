@@ -570,6 +570,23 @@ async def change_password(
     return Msg(message="Password updated")
 
 
+class VerifyPasswordIn(BaseModel):
+    current_password: str
+
+@router.post("/users/{uid}/verify-password")
+async def verify_password_endpoint(
+    uid: int, body: VerifyPasswordIn,
+    db: AsyncSession = Depends(get_db),
+    actor: RBACUser = Depends(au.get_current_rbac_user),
+):
+    if uid != actor.id and not any(r.frontend_key == "it-admin" for r in actor.roles):
+        raise HTTPException(403, "Not authorised")
+    u = (await db.execute(select(RBACUser).where(RBACUser.id == uid))).scalars().first()
+    if not u:
+        raise HTTPException(404)
+    return {"valid": au.verify_password(body.current_password, u.hashed_password)}
+
+
 # ── User-level permission overrides ──────────────────────────────────────────
 
 @router.get("/users/{uid}/permissions", response_model=List[UserPermOut])
