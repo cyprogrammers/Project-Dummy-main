@@ -636,6 +636,23 @@ async def change_password(
     return Msg(message="Password updated")
 
 
+class VerifyPasswordIn(BaseModel):
+    current_password: str
+
+@router.post("/users/{uid}/verify-password")
+async def verify_password_endpoint(
+    uid: int, body: VerifyPasswordIn,
+    db: AsyncSession = Depends(get_db),
+    actor: RBACUser = Depends(au.get_current_rbac_user),
+):
+    if uid != actor.id and not any(r.frontend_key == "it-admin" for r in actor.roles):
+        raise HTTPException(403, "Not authorised")
+    u = (await db.execute(select(RBACUser).where(RBACUser.id == uid))).scalars().first()
+    if not u:
+        raise HTTPException(404)
+    return {"valid": au.verify_password(body.current_password, u.hashed_password)}
+
+
 # ── User-level permission overrides ──────────────────────────────────────────
 
 @router.get("/users/{uid}/permissions", response_model=List[UserPermOut])
@@ -1192,13 +1209,17 @@ async def rbac_dashboard_stats(
 
 @router.get("/dashboard/login-stats")
 async def rbac_login_stats(
+    tz_offset: int = Query(0, description="Client UTC offset in minutes (e.g. 120 for UTC+2)"),
     db: AsyncSession = Depends(get_db),
     _: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    from datetime import datetime, timedelta, timezone
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    from datetime import datetime, timezone, timedelta
+    client_tz = timezone(timedelta(minutes=tz_offset))
+    local_now = datetime.now(client_tz)
+    local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = local_midnight.astimezone(timezone.utc)
 
-    logins_24h = (await db.execute(
+    logins_today = (await db.execute(
         select(func.count(RBACActivityLog.id)).where(
             RBACActivityLog.action == ActivityAction.login,
             RBACActivityLog.result == ActivityResult.success,
@@ -1206,7 +1227,7 @@ async def rbac_login_stats(
         )
     )).scalar_one()
 
-    failures_24h = (await db.execute(
+    failures_today = (await db.execute(
         select(func.count(RBACActivityLog.id)).where(
             RBACActivityLog.action == ActivityAction.login_failed,
             RBACActivityLog.timestamp >= cutoff,
@@ -1217,12 +1238,12 @@ async def rbac_login_stats(
         select(func.count(RBACUser.id)).where(RBACUser.status == UserStatus.locked)
     )).scalar_one()
 
-    total_attempts = logins_24h + failures_24h
-    failure_rate = round(failures_24h / total_attempts * 100, 1) if total_attempts else 0.0
+    total_attempts = logins_today + failures_today
+    failure_rate = round(failures_today / total_attempts * 100, 1) if total_attempts else 0.0
 
     return {
-        "logins_24h":   logins_24h,
-        "failures_24h": failures_24h,
+        "logins_24h":   logins_today,
+        "failures_24h": failures_today,
         "failure_rate": failure_rate,
         "locked_users": locked_users,
     }
@@ -1230,11 +1251,15 @@ async def rbac_login_stats(
 
 @router.get("/dashboard/login-hourly")
 async def rbac_login_hourly(
+    tz_offset: int = Query(0, description="Client UTC offset in minutes (e.g. 120 for UTC+2)"),
     db: AsyncSession = Depends(get_db),
     _: RBACUser = Depends(au.get_current_rbac_user),
 ):
-    from datetime import datetime, timedelta, timezone
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    from datetime import datetime, timezone, timedelta
+    client_tz = timezone(timedelta(minutes=tz_offset))
+    local_now = datetime.now(client_tz)
+    local_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = local_midnight.astimezone(timezone.utc)
 
     logs = (await db.execute(
         select(RBACActivityLog.timestamp, RBACActivityLog.action, RBACActivityLog.result).where(
@@ -1245,7 +1270,8 @@ async def rbac_login_hourly(
 
     hourly: dict[int, dict] = {h: {"successful": 0, "failed": 0} for h in range(24)}
     for ts, action, result in logs:
-        h = ts.hour
+        local_ts = ts.astimezone(client_tz)
+        h = local_ts.hour
         if action == ActivityAction.login and result == ActivityResult.success:
             hourly[h]["successful"] += 1
         else:

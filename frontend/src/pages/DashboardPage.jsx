@@ -79,6 +79,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
   const [editConfirmPassword, setEditConfirmPassword] = useState('')
   const [editPwError, setEditPwError] = useState('')
   const [showEditPasswords, setShowEditPasswords] = useState(false)
+  const [editOldPasswordValid, setEditOldPasswordValid] = useState(null)
+  const [editOldPasswordChecking, setEditOldPasswordChecking] = useState(false)
   const tabs = ['USERS', 'PERMISSIONS', 'SETTINGS', 'ACTIVITY LOG']
   const tabIds = ['users', 'permissions', 'settings', 'activity-log']
 
@@ -298,6 +300,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
     if (editOldPassword || editNewPassword || editConfirmPassword) {
       if (!editOldPassword) { setEditPwError('Please enter your current password.'); return }
       if (!editNewPassword) { setEditPwError('Please enter a new password.'); return }
+      if (editNewPassword === editOldPassword) { setEditPwError('New password must be different from the current password.'); return }
       if (editNewPassword !== editConfirmPassword) { setEditPwError('New passwords do not match.'); return }
       if (editNewPassword.length < 8) { setEditPwError('New password must be at least 8 characters.'); return }
     }
@@ -345,6 +348,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
       setEditConfirmPassword('')
       setEditPwError('')
       setShowEditPasswords(false)
+      setEditOldPasswordValid(null)
+      setEditOldPasswordChecking(false)
     }
   }, [editingUser])
 
@@ -1126,23 +1131,40 @@ function RoleProfileView({ role, onBack, dm, styles }) {
               <p style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', margin: '0 0 14px 0' }}>Change Password (optional)</p>
 
               {/* Current Password */}
-              <div style={{ marginBottom: '14px' }}>
+              <div style={{ marginBottom: '6px' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>Current Password</label>
                 <input type={showEditPasswords ? 'text' : 'password'}
                   value={editOldPassword}
-                  onChange={(e) => { setEditOldPassword(e.target.value); setEditPwError('') }}
+                  onChange={(e) => { setEditOldPassword(e.target.value); setEditOldPasswordValid(null); setEditPwError('') }}
+                  onBlur={async () => {
+                    if (!editOldPassword || !editingUser) return
+                    setEditOldPasswordChecking(true)
+                    try {
+                      const res = await usersAPI.verifyPassword(editingUser.id, editOldPassword)
+                      setEditOldPasswordValid(res.valid)
+                      if (!res.valid) { setEditNewPassword(''); setEditConfirmPassword('') }
+                    } catch { setEditOldPasswordValid(false); setEditNewPassword(''); setEditConfirmPassword('') }
+                    finally { setEditOldPasswordChecking(false) }
+                  }}
                   placeholder="Enter current password"
-                  style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+                  autoComplete="new-password"
+                  style={{ width: '100%', padding: '12px 14px', border: `1px solid ${editOldPasswordValid === false ? '#ef4444' : editOldPasswordValid === true ? '#16a34a' : (dm ? '#334155' : '#e5e7eb')}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ minHeight: '22px', marginBottom: '10px', fontSize: '12px' }}>
+                {editOldPasswordChecking && <span style={{ color: dm ? '#94a3b8' : '#6b7280' }}>Verifying...</span>}
+                {!editOldPasswordChecking && editOldPasswordValid === false && <span style={{ color: '#ef4444' }}>Current password is incorrect.</span>}
+                {!editOldPasswordChecking && editOldPasswordValid === true && <span style={{ color: '#16a34a' }}>Password verified.</span>}
               </div>
 
-              {/* New Password — disabled until old password is entered */}
-              <div style={{ marginBottom: '14px', opacity: editOldPassword ? 1 : 0.4, pointerEvents: editOldPassword ? 'auto' : 'none' }}>
+              {/* New Password — disabled until old password is verified */}
+              <div style={{ marginBottom: '14px', opacity: editOldPasswordValid === true ? 1 : 0.4, pointerEvents: editOldPasswordValid === true ? 'auto' : 'none' }}>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: '700', letterSpacing: '0.7px', color: dm ? '#64748b' : '#9ca3af', textTransform: 'uppercase', marginBottom: '8px' }}>New Password</label>
                 <input type={showEditPasswords ? 'text' : 'password'}
                   value={editNewPassword}
                   onChange={(e) => { setEditNewPassword(e.target.value); setEditPwError('') }}
                   placeholder="Enter new password"
-                  disabled={!editOldPassword}
+                  disabled={editOldPasswordValid !== true}
+                  autoComplete="new-password"
                   style={{ width: '100%', padding: '12px 14px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
               </div>
 
@@ -1154,6 +1176,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
                   onChange={(e) => { setEditConfirmPassword(e.target.value); setEditPwError('') }}
                   placeholder="Confirm new password"
                   disabled={!editNewPassword}
+                  autoComplete="new-password"
                   style={{ width: '100%', padding: '12px 14px', border: `1px solid ${editPwError && editConfirmPassword && editConfirmPassword !== editNewPassword ? '#ef4444' : (dm ? '#334155' : '#e5e7eb')}`, borderRadius: '10px', fontSize: '14px', color: dm ? '#f1f5f9' : '#111827', background: dm ? '#0f172a' : '#f9fafb', outline: 'none', boxSizing: 'border-box' }} />
               </div>
 
@@ -1476,7 +1499,8 @@ export default function DashboardPage({ onLogout, currentUser }) {
             </div>
           </div>
           {onLogout && (
-            <button onClick={onLogout} style={styles.logoutBtn} title="Log out">
+            <button onClick={onLogout} style={styles.logoutBtn}>
+              <span>LOGOUT</span>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -1875,8 +1899,9 @@ const makeStyles = (dm) => ({
   },
   profile: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: '10px',
     padding: '14px 20px',
     borderTop: `1px solid ${dm ? '#334155' : '#e5e7eb'}`,
     flexShrink: 0,
@@ -1887,16 +1912,21 @@ const makeStyles = (dm) => ({
     gap: '12px',
   },
   logoutBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: dm ? '#64748b' : '#9ca3af',
-    padding: '6px',
-    borderRadius: '8px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    gap: '8px',
+    width: '100%',
+    padding: '8px 14px',
+    borderRadius: '999px',
+    border: `1.5px solid ${dm ? '#475569' : '#d1d5db'}`,
+    background: dm ? 'transparent' : 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '700',
+    letterSpacing: '0.8px',
+    color: dm ? '#94a3b8' : '#374151',
+    boxSizing: 'border-box',
   },
   avatar: {
     width: '40px',

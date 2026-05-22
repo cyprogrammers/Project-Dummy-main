@@ -12,7 +12,7 @@ OLLAMA_MODEL: str    = os.getenv("OLLAMA_MODEL", "llama3")
 # ─── PostgreSQL ──────────────────────────────────────────────────────────────
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:root@localhost:5432/aitrms"
+    "postgresql+asyncpg://postgres:1062@localhost:5432/aitrms"
 )
 
 # ─── Keycloak ────────────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ KEYCLOAK_ALGORITHM: str = "RS256"
 
 # ─── Elasticsearch / ELK ─────────────────────────────────────────────────────
 ELASTICSEARCH_HOST: str = os.getenv("ELASTICSEARCH_HOST", "http://localhost:9200")
-ELASTICSEARCH_INDEX: str = os.getenv("ELASTICSEARCH_INDEX", "winlogbeat-*")
+ELASTICSEARCH_INDEX: str = os.getenv("ELASTICSEARCH_INDEX", "filebeat-*")
 ELASTICSEARCH_POLL_INTERVAL_SECONDS: int = int(os.getenv("ES_POLL_INTERVAL", "30"))
 ELASTICSEARCH_WINDOW_MINUTES: int = int(os.getenv("ES_WINDOW_MINUTES", "30"))
 

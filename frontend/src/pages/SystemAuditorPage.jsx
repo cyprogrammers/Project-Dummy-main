@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { activity as activityAPI } from '../services/authService'
 
 const NAV_ITEMS = [
   {
@@ -59,9 +60,109 @@ const PLACEHOLDER_ROWS = [1, 2, 3, 4]
 export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('audit-trail')
   const [darkMode, setDarkMode] = useState(false)
+  const [auditLogs, setAuditLogs] = useState([])
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [lastRefreshed, setLastRefreshed] = useState(null)
+  const [showFilter, setShowFilter] = useState(false)
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo, setFilterTo] = useState('')
+  const [appliedFrom, setAppliedFrom] = useState('')
+  const [appliedTo, setAppliedTo] = useState('')
+
+  const isFetchingRef = useRef(false)
+
+  useEffect(() => {
+    let active = true
+
+    const fetchAllLogs = async () => {
+      const PAGE = 200
+      let page = 1
+      let all = []
+      while (true) {
+        const batch = await activityAPI.list({ page_size: PAGE, page })
+        if (!Array.isArray(batch) || batch.length === 0) break
+        all = [...all, ...batch]
+        if (batch.length < PAGE) break
+        page++
+      }
+      return all
+    }
+
+    const fetchLogs = async (showSpinner = false) => {
+      if (isFetchingRef.current) return
+      isFetchingRef.current = true
+      if (showSpinner) setAuditLoading(true)
+      try {
+        const logs = await fetchAllLogs()
+        if (active) {
+          setAuditLogs(logs)
+          setLastRefreshed(new Date())
+        }
+      } catch (err) {
+        console.error('Failed to fetch audit logs:', err)
+      } finally {
+        isFetchingRef.current = false
+        if (showSpinner) setAuditLoading(false)
+      }
+    }
+
+    fetchLogs(true)
+    const interval = setInterval(() => fetchLogs(false), 5000)
+    return () => { active = false; clearInterval(interval) }
+  }, [])
   const dm = darkMode
   const styles = makeStyles(dm)
   const header = PAGE_HEADERS[activePage]
+
+  const toMs = (ts) => {
+    if (!ts) return null
+    return new Date(ts).getTime()
+  }
+
+  const filterActive = !!(appliedFrom || appliedTo)
+
+  const filteredLogs = auditLogs.filter(log => {
+    if (!filterActive) return true
+    const ms = toMs(log.timestamp)
+    if (ms === null) return false
+    if (appliedFrom && ms < new Date(appliedFrom).getTime()) return false
+    if (appliedTo && ms > new Date(appliedTo + 'T23:59:59.999Z').getTime()) return false
+    return true
+  })
+
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000
+
+  const isTodayLocal = (ts) => {
+    if (!ts) return false
+    const t = new Date(ts).getTime()
+    return t >= todayStart && t < todayEnd
+  }
+
+  const baseLogs = filterActive ? filteredLogs : auditLogs.filter(log => isTodayLocal(log.timestamp))
+
+  const count24h = baseLogs.length
+
+  const ACCESS_CHANGE_ACTIONS = new Set([
+    'ROLE_ASSIGN', 'ROLE_REMOVE',
+    'PERM_REQUEST', 'PERM_UPDATE',
+    'STATUS_CHANGE',
+    'USER_CREATE', 'USER_UPDATE', 'USER_DELETE',
+    'MFA_TOGGLE', 'PASSWORD_CHANGE',
+  ])
+
+  const blockedCount = baseLogs.filter(log => {
+    const r = String(log.result).toUpperCase()
+    return r === 'FAILED' || r === 'ENFORCED'
+  }).length
+
+  const accessChangesCount = baseLogs.filter(log =>
+    ACCESS_CHANGE_ACTIONS.has(String(log.action).toUpperCase())
+  ).length
+
+  const applyFilter = () => setAppliedFrom(filterFrom) || setAppliedTo(filterTo)
+  const clearFilter = () => { setFilterFrom(''); setFilterTo(''); setAppliedFrom(''); setAppliedTo('') }
 
   return (
     <div style={styles.wrapper}>
@@ -115,7 +216,8 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
             </div>
           </div>
           {onLogout && (
-            <button onClick={onLogout} style={styles.logoutBtn} title="Log out">
+            <button onClick={onLogout} style={styles.logoutBtn}>
+              <span>LOGOUT</span>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -158,17 +260,19 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
         <div style={styles.cardGrid4}>
           <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce7'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>EVENTS (24H)</span>
-            <div style={{ ...styles.cardValue, color: '#16a34a' }}>—</div>
-            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>All events logged</div>
+            <div style={{ ...styles.cardValue, color: '#16a34a' }}>{auditLoading ? '…' : count24h}</div>
+            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>
+              {lastRefreshed ? `Updated ${lastRefreshed.toLocaleTimeString()}` : 'Loading…'}
+            </div>
           </div>
           <div style={{ ...styles.card, background: dm ? '#451a03' : '#fffbeb', border: `1px solid ${dm ? '#78350f' : '#fef3c7'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>ACCESS CHANGES</span>
-            <div style={{ ...styles.cardValue, color: '#0ea5e9' }}>—</div>
-            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Role assignments</div>
+            <div style={{ ...styles.cardValue, color: '#0ea5e9' }}>{auditLoading ? '…' : accessChangesCount}</div>
+            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Role, account & auth changes</div>
           </div>
           <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>BLOCKED EVENTS</span>
-            <div style={{ ...styles.cardValue, color: '#ef4444' }}>—</div>
+            <div style={{ ...styles.cardValue, color: '#ef4444' }}>{auditLoading ? '…' : blockedCount}</div>
             <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Brute-force + scans</div>
           </div>
           <div style={{ ...styles.card, background: dm ? '#083344' : '#ecfeff', border: `1px solid ${dm ? '#164e63' : '#cffafe'}` }}>
@@ -181,23 +285,97 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
         <div style={styles.chartCard}>
           <div style={styles.alertsHeader}>
             <div style={styles.alertsTitleRow}>
-              <span style={styles.liveDotPulse} />
               <span style={styles.alertsTitle}>{header.panelTitle}</span>
             </div>
-            <button style={styles.viewAllBtn}>View All</button>
+            {activePage === 'audit-trail' && (
+              <button
+                onClick={() => setShowFilter(f => !f)}
+                style={{ ...styles.viewAllBtn, display: 'flex', alignItems: 'center', gap: '6px', background: showFilter ? (dm ? '#1e40af' : '#eff6ff') : undefined, borderColor: showFilter ? '#3b82f6' : undefined, color: showFilter ? '#3b82f6' : undefined }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                </svg>
+                Filter by Date
+              </button>
+            )}
           </div>
+
+          {activePage === 'audit-trail' && showFilter && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0 16px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: dm ? '#94a3b8' : '#6b7280', whiteSpace: 'nowrap' }}>FROM</label>
+                <input
+                  type="date"
+                  value={filterFrom}
+                  onChange={e => setFilterFrom(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#0f172a' : '#f9fafb', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '600', color: dm ? '#94a3b8' : '#6b7280', whiteSpace: 'nowrap' }}>TO</label>
+                <input
+                  type="date"
+                  value={filterTo}
+                  onChange={e => setFilterTo(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#0f172a' : '#f9fafb', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+              <button onClick={applyFilter} style={{ padding: '6px 16px', borderRadius: '8px', border: 'none', background: '#1d4ed8', color: 'white', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Apply</button>
+              {(appliedFrom || appliedTo) && (
+                <button onClick={clearFilter} style={{ padding: '6px 16px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: 'transparent', color: dm ? '#94a3b8' : '#6b7280', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
+              )}
+              {(appliedFrom || appliedTo) && (
+                <span style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>Showing {baseLogs.length} of {auditLogs.length} events</span>
+              )}
+            </div>
+          )}
 
           {activePage === 'audit-trail' ? (
             <div style={styles.tableWrapper}>
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    {['TIMESTAMP', 'ACTOR', 'ACTION', 'TARGET', 'IP ADDRESS'].map((col) => (
+                    {['TIMESTAMP', 'ACTOR', 'ACTION', 'TARGET', 'IP ADDRESS', 'RESULT'].map((col) => (
                       <th key={col} style={styles.th}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
+                  {auditLoading ? (
+                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading audit events…</td></tr>
+                  ) : baseLogs.length === 0 ? (
+                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>{auditLogs.length === 0 ? 'No audit events recorded yet' : filterActive ? 'No events match the selected date range' : 'No audit events recorded today'}</td></tr>
+                  ) : baseLogs.map((log, i, arr) => {
+                    const r = String(log.result).toUpperCase()
+                    const resultColor = r === 'SUCCESS'  ? { background: '#d1fae5', color: '#065f46', border: '1px solid #10b981' }
+                                      : r === 'FAILED'   ? { background: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444' }
+                                      : r === 'PENDING'  ? { background: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b' }
+                                      : r === 'ENFORCED' ? { background: '#ffedd5', color: '#9a3412', border: '1px solid #f97316' }
+                                      : r === 'DENIED'   ? { background: '#ede9fe', color: '#5b21b6', border: '1px solid #7c3aed' }
+                                      :                    { background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }
+                    return (
+                      <tr key={log.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
+                        <td style={styles.tdTimestamp}>{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                        <td style={{ ...styles.td, color: dm ? '#93c5fd' : '#0891b2', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {log.actor_email || '—'}
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', border: `1px solid ${dm ? '#0891b2' : '#67e8f9'}`, color: dm ? '#22d3ee' : '#0891b2', background: 'transparent' }}>
+                            {String(log.action).toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ ...styles.td, color: dm ? '#94a3b8' : '#6b7280', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {log.target_user_email || log.role_name || '—'}
+                        </td>
+                        <td style={styles.td}>{log.ip_address || '—'}</td>
+                        <td style={styles.td}>
+                          <span style={{ display: 'inline-block', padding: '3px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', ...resultColor }}>
+                            {r === 'FAILED' ? 'BLOCKED' : r}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -308,8 +486,9 @@ const makeStyles = (dm) => ({
   },
   profile: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: '10px',
     padding: '14px 18px',
     borderTop: `1px solid ${dm ? '#334155' : '#e5e7eb'}`,
     flexShrink: 0,
@@ -345,16 +524,21 @@ const makeStyles = (dm) => ({
     color: dm ? '#64748b' : '#9ca3af',
   },
   logoutBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: dm ? '#64748b' : '#9ca3af',
-    padding: '6px',
-    borderRadius: '8px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    gap: '8px',
+    width: '100%',
+    padding: '8px 14px',
+    borderRadius: '999px',
+    border: `1.5px solid ${dm ? '#475569' : '#d1d5db'}`,
+    background: dm ? 'transparent' : 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '700',
+    letterSpacing: '0.8px',
+    color: dm ? '#94a3b8' : '#374151',
+    boxSizing: 'border-box',
   },
   main: {
     flex: 1,

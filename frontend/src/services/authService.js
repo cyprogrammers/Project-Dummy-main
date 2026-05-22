@@ -120,8 +120,10 @@ export const users = {
     apiCall(`/users/${id}/status`, { method: "PATCH", body: JSON.stringify({ status, reason }) }),
   toggleMFA: (id, enabled) =>
     apiCall(`/users/${id}/mfa`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
-  changePassword: (id, current_password, new_password) =>
+  changePassword:  (id, current_password, new_password) =>
     apiCall(`/users/${id}/password`, { method: "POST", body: JSON.stringify({ current_password, new_password }) }),
+  verifyPassword:  (id, current_password) =>
+    apiCall(`/users/${id}/verify-password`, { method: "POST", body: JSON.stringify({ current_password }) }),
   sessions: (id) => apiCall(`/users/${id}/sessions`),
   activity: (id) => apiCall(`/users/${id}/activity`),
   stats:    ()   => apiCall("/users/stats"),
@@ -166,8 +168,8 @@ export const activity = {
 
 export const dashboard = {
   rbacStats:    () => apiCall("/dashboard/stats"),
-  loginStats:   () => apiCall("/dashboard/login-stats"),
-  loginHourly:  () => apiCall("/dashboard/login-hourly"),
+  loginStats:   () => { const tz = -new Date().getTimezoneOffset(); return apiCall(`/dashboard/login-stats?tz_offset=${tz}`); },
+  loginHourly:  () => { const tz = -new Date().getTimezoneOffset(); return apiCall(`/dashboard/login-hourly?tz_offset=${tz}`); },
 };
 
 // ─── Auto-refresh interceptor ─────────────────────────────────────────────────

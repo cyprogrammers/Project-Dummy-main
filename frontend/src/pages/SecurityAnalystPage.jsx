@@ -75,6 +75,7 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('events')
   const [darkMode, setDarkMode] = useState(false)
   const [storylineData, setStorylineData] = useState({ storylines: [], totals: { open: 0, critical: 0, blocked_ips: 0, avg_confidence: 0 } })
+  const [intelData, setIntelData] = useState({ active_iocs: 0, new_cves_7d: 0, threat_feeds: 0, blocked_ips: 0, live_alerts: [] })
   const [isSimulating, setIsSimulating] = useState(false)
   const [storylineError, setStorylineError] = useState('')
   const [loginStats, setLoginStats] = useState(null)
@@ -93,6 +94,16 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
       setStorylineError('Storyline service unavailable.')
     }
   }
+
+  const loadIntel = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/ui/analyst/intelligence`)
+      const data = await response.json()
+      setIntelData(data)
+    } catch (_) {}
+  }
+
+  useEffect(() => { loadIntel() }, [])
 
   const handleSimulateStoryline = async () => {
     setIsSimulating(true)
@@ -142,7 +153,7 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
     if (activePage === 'attack-storyline') loadStorylines()
     if (activePage === 'login-monitor') {
       loadLoginStats()
-      const interval = setInterval(loadLoginStats, 30000)
+      const interval = setInterval(loadLoginStats, 15000)
       return () => clearInterval(interval)
     }
   }, [activePage])
@@ -203,7 +214,8 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
             </div>
           </div>
           {onLogout && (
-            <button onClick={onLogout} style={styles.logoutBtn} title="Log out">
+            <button onClick={onLogout} style={styles.logoutBtn}>
+              <span>LOGOUT</span>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <polyline points="16 17 21 12 16 7" />
@@ -432,7 +444,13 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
           </div>
 
           <div style={styles.chartCard}>
-            <div style={styles.chartHeader}><span style={styles.chartTitle}>HOURLY LOGIN EVENTS</span></div>
+            <div style={{ ...styles.chartHeader, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={styles.chartTitle}>HOURLY LOGIN EVENTS</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 6px #22c55e' }} />
+                <span style={{ fontSize: '11px', fontWeight: '600', color: '#22c55e', letterSpacing: '0.5px' }}>LIVE · TODAY</span>
+              </div>
+            </div>
             {(() => {
               const CHART_H = 260
               const SLOTS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
@@ -509,14 +527,14 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
         {activePage === 'threat-intel' && <>
           <div style={styles.cardGrid4}>
             {[
-              { label: 'ACTIVE IOCs',       color: '#ef4444', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce7', sub: 'Indicators of compromise' },
-              { label: 'NEW CVEs (7D)',      color: '#f97316', tint: dm ? '#451a03' : '#fffbeb', border: dm ? '#78350f' : '#fef3c7', sub: 'Matching our stack' },
-              { label: 'THREAT FEEDS',      color: '#06b6d4', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce3', sub: 'Active integrations' },
-              { label: 'BLOCKED IPs',       color: '#7c3aed', tint: dm ? '#083344' : '#ecfeff', border: dm ? '#164e63' : '#cffafe', sub: 'Auto-blocked today' },
-            ].map(({ label, color, tint, border, sub }) => (
+              { label: 'ACTIVE IOCs',  value: intelData.active_iocs,  color: '#ef4444', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce7', sub: 'Indicators of compromise' },
+              { label: 'NEW CVEs (7D)', value: intelData.new_cves_7d, color: '#f97316', tint: dm ? '#451a03' : '#fffbeb', border: dm ? '#78350f' : '#fef3c7', sub: 'Matching our stack' },
+              { label: 'THREAT FEEDS', value: intelData.threat_feeds,  color: '#06b6d4', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce3', sub: 'Active integrations' },
+              { label: 'BLOCKED IPs',  value: intelData.blocked_ips,   color: '#7c3aed', tint: dm ? '#083344' : '#ecfeff', border: dm ? '#164e63' : '#cffafe', sub: 'Auto-blocked today' },
+            ].map(({ label, value, color, tint, border, sub }) => (
               <div key={label} style={{ ...styles.card, background: tint, border: `1px solid ${border}` }}>
                 <span style={{ ...styles.cardLabel, color }}>{label}</span>
-                <div style={{ ...styles.cardValue, color }}>—</div>
+                <div style={{ ...styles.cardValue, color }}>{value ?? '—'}</div>
                 <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>{sub}</div>
               </div>
             ))}
@@ -531,17 +549,23 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
                 ))}</tr>
               </thead>
               <tbody>
-                {[1, 2, 3, 4, 5].map((i) => (
+                {(intelData.live_alerts || []).length === 0 ? (
+                  <tr><td colSpan={5} style={{ ...styles.td, textAlign: 'center' }}>No active alerts</td></tr>
+                ) : (intelData.live_alerts || []).map((alert, i) => (
                   <tr key={i}>
-                    <td style={{ ...styles.td, fontFamily: "'Inter', 'Segoe UI', sans-serif", fontSize: '13px', color: dm ? '#f1f5f9' : '#111827' }}>—</td>
-                    <td style={styles.td}>—</td>
-                    <td style={styles.td}>—</td>
+                    <td style={{ ...styles.td, fontFamily: "'Inter', 'Segoe UI', sans-serif", fontSize: '13px', color: dm ? '#f1f5f9' : '#111827' }}>{alert.label}</td>
+                    <td style={styles.td}>Network</td>
+                    <td style={styles.td}>{alert.source_ip}</td>
                     <td style={styles.td}>
                       <div style={{ ...styles.confBar }}>
-                        <div style={{ ...styles.confFill, width: '0%', background: '#ef4444' }} />
+                        <div style={{ ...styles.confFill, width: '92%', background: alert.level === 'critical' ? '#ef4444' : '#f97316' }} />
                       </div>
                     </td>
-                    <td style={styles.td}><span style={styles.badgeNeutral}>—</span></td>
+                    <td style={styles.td}>
+                      <span style={alert.level === 'critical' ? styles.badgeCritical : styles.badgeMedium}>
+                        {alert.level?.toUpperCase()}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -706,8 +730,9 @@ const makeStyles = (dm) => ({
   },
   profile: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: '10px',
     padding: '14px 18px',
     borderTop: `1px solid ${dm ? '#334155' : '#e5e7eb'}`,
     flexShrink: 0,
@@ -743,16 +768,21 @@ const makeStyles = (dm) => ({
     color: dm ? '#64748b' : '#9ca3af',
   },
   logoutBtn: {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: dm ? '#64748b' : '#9ca3af',
-    padding: '6px',
-    borderRadius: '8px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
+    gap: '8px',
+    width: '100%',
+    padding: '8px 14px',
+    borderRadius: '999px',
+    border: `1.5px solid ${dm ? '#475569' : '#d1d5db'}`,
+    background: dm ? 'transparent' : 'white',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: '700',
+    letterSpacing: '0.8px',
+    color: dm ? '#94a3b8' : '#374151',
+    boxSizing: 'border-box',
   },
   main: {
     flex: 1,
