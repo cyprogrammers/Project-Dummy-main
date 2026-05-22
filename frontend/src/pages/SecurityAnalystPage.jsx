@@ -75,6 +75,7 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('events')
   const [darkMode, setDarkMode] = useState(false)
   const [storylineData, setStorylineData] = useState({ storylines: [], totals: { open: 0, critical: 0, blocked_ips: 0, avg_confidence: 0 } })
+  const [intelData, setIntelData] = useState({ active_iocs: 0, new_cves_7d: 0, threat_feeds: 0, blocked_ips: 0, live_alerts: [] })
   const [isSimulating, setIsSimulating] = useState(false)
   const [storylineError, setStorylineError] = useState('')
   const [loginStats, setLoginStats] = useState(null)
@@ -93,6 +94,16 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
       setStorylineError('Storyline service unavailable.')
     }
   }
+
+  const loadIntel = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/ui/analyst/intelligence`)
+      const data = await response.json()
+      setIntelData(data)
+    } catch (_) {}
+  }
+
+  useEffect(() => { loadIntel() }, [])
 
   const handleSimulateStoryline = async () => {
     setIsSimulating(true)
@@ -516,14 +527,14 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
         {activePage === 'threat-intel' && <>
           <div style={styles.cardGrid4}>
             {[
-              { label: 'ACTIVE IOCs',       color: '#ef4444', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce7', sub: 'Indicators of compromise' },
-              { label: 'NEW CVEs (7D)',      color: '#f97316', tint: dm ? '#451a03' : '#fffbeb', border: dm ? '#78350f' : '#fef3c7', sub: 'Matching our stack' },
-              { label: 'THREAT FEEDS',      color: '#06b6d4', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce3', sub: 'Active integrations' },
-              { label: 'BLOCKED IPs',       color: '#7c3aed', tint: dm ? '#083344' : '#ecfeff', border: dm ? '#164e63' : '#cffafe', sub: 'Auto-blocked today' },
-            ].map(({ label, color, tint, border, sub }) => (
+              { label: 'ACTIVE IOCs',  value: intelData.active_iocs,  color: '#ef4444', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce7', sub: 'Indicators of compromise' },
+              { label: 'NEW CVEs (7D)', value: intelData.new_cves_7d, color: '#f97316', tint: dm ? '#451a03' : '#fffbeb', border: dm ? '#78350f' : '#fef3c7', sub: 'Matching our stack' },
+              { label: 'THREAT FEEDS', value: intelData.threat_feeds,  color: '#06b6d4', tint: dm ? '#064e3b' : '#f0fdf4', border: dm ? '#065f46' : '#dcfce3', sub: 'Active integrations' },
+              { label: 'BLOCKED IPs',  value: intelData.blocked_ips,   color: '#7c3aed', tint: dm ? '#083344' : '#ecfeff', border: dm ? '#164e63' : '#cffafe', sub: 'Auto-blocked today' },
+            ].map(({ label, value, color, tint, border, sub }) => (
               <div key={label} style={{ ...styles.card, background: tint, border: `1px solid ${border}` }}>
                 <span style={{ ...styles.cardLabel, color }}>{label}</span>
-                <div style={{ ...styles.cardValue, color }}>—</div>
+                <div style={{ ...styles.cardValue, color }}>{value ?? '—'}</div>
                 <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>{sub}</div>
               </div>
             ))}
@@ -538,17 +549,23 @@ export default function SecurityAnalystPage({ onLogout, currentUser }) {
                 ))}</tr>
               </thead>
               <tbody>
-                {[1, 2, 3, 4, 5].map((i) => (
+                {(intelData.live_alerts || []).length === 0 ? (
+                  <tr><td colSpan={5} style={{ ...styles.td, textAlign: 'center' }}>No active alerts</td></tr>
+                ) : (intelData.live_alerts || []).map((alert, i) => (
                   <tr key={i}>
-                    <td style={{ ...styles.td, fontFamily: "'Inter', 'Segoe UI', sans-serif", fontSize: '13px', color: dm ? '#f1f5f9' : '#111827' }}>—</td>
-                    <td style={styles.td}>—</td>
-                    <td style={styles.td}>—</td>
+                    <td style={{ ...styles.td, fontFamily: "'Inter', 'Segoe UI', sans-serif", fontSize: '13px', color: dm ? '#f1f5f9' : '#111827' }}>{alert.label}</td>
+                    <td style={styles.td}>Network</td>
+                    <td style={styles.td}>{alert.source_ip}</td>
                     <td style={styles.td}>
                       <div style={{ ...styles.confBar }}>
-                        <div style={{ ...styles.confFill, width: '0%', background: '#ef4444' }} />
+                        <div style={{ ...styles.confFill, width: '92%', background: alert.level === 'critical' ? '#ef4444' : '#f97316' }} />
                       </div>
                     </td>
-                    <td style={styles.td}><span style={styles.badgeNeutral}>—</span></td>
+                    <td style={styles.td}>
+                      <span style={alert.level === 'critical' ? styles.badgeCritical : styles.badgeMedium}>
+                        {alert.level?.toUpperCase()}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
