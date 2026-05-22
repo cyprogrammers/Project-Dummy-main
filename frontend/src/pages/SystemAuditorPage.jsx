@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { activity as activityAPI } from '../services/authService'
 
 const NAV_ITEMS = [
@@ -69,6 +69,8 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [appliedFrom, setAppliedFrom] = useState('')
   const [appliedTo, setAppliedTo] = useState('')
 
+  const isFetchingRef = useRef(false)
+
   useEffect(() => {
     let active = true
 
@@ -87,6 +89,8 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
     }
 
     const fetchLogs = async (showSpinner = false) => {
+      if (isFetchingRef.current) return
+      isFetchingRef.current = true
       if (showSpinner) setAuditLoading(true)
       try {
         const logs = await fetchAllLogs()
@@ -97,6 +101,7 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
       } catch (err) {
         console.error('Failed to fetch audit logs:', err)
       } finally {
+        isFetchingRef.current = false
         if (showSpinner) setAuditLoading(false)
       }
     }
@@ -137,6 +142,17 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
     const r = String(log.result).toUpperCase()
     return r === 'FAILED' || r === 'ENFORCED'
   }).length
+
+  const ACCESS_CHANGE_ACTIONS = new Set([
+    'ROLE_ASSIGN', 'ROLE_REMOVE',
+    'PERM_REQUEST', 'PERM_UPDATE',
+    'STATUS_CHANGE',
+    'USER_CREATE', 'USER_UPDATE', 'USER_DELETE',
+    'MFA_TOGGLE', 'PASSWORD_CHANGE',
+  ])
+  const accessChangesCount = (filterActive ? filteredLogs : auditLogs).filter(log =>
+    ACCESS_CHANGE_ACTIONS.has(String(log.action).toUpperCase())
+  ).length
 
   const applyFilter = () => setAppliedFrom(filterFrom) || setAppliedTo(filterTo)
   const clearFilter = () => { setFilterFrom(''); setFilterTo(''); setAppliedFrom(''); setAppliedTo('') }
@@ -244,8 +260,8 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
           </div>
           <div style={{ ...styles.card, background: dm ? '#451a03' : '#fffbeb', border: `1px solid ${dm ? '#78350f' : '#fef3c7'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>ACCESS CHANGES</span>
-            <div style={{ ...styles.cardValue, color: '#0ea5e9' }}>—</div>
-            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Role assignments</div>
+            <div style={{ ...styles.cardValue, color: '#0ea5e9' }}>{auditLoading ? '…' : accessChangesCount}</div>
+            <div style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#6b7280' }}>Role, account & auth changes</div>
           </div>
           <div style={{ ...styles.card, background: dm ? '#064e3b' : '#f0fdf4', border: `1px solid ${dm ? '#065f46' : '#dcfce3'}` }}>
             <span style={{ ...styles.cardLabel, color: dm ? '#94a3b8' : '#6b7280' }}>BLOCKED EVENTS</span>
