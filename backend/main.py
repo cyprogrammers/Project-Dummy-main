@@ -32,6 +32,7 @@ from auth.keycloak import get_telemetry_ingest_roles
 from connectors.elk_ingestor import poll_elasticsearch
 import asyncio
 from backup.backup_engine import backup_router
+from core.gdpr_evaluator import gdpr_router
 
 
 logging.basicConfig(level=logging.INFO)
@@ -51,6 +52,7 @@ app.add_middleware(
 app.include_router(agentic_router)
 app.include_router(rbac_router)
 app.include_router(backup_router)
+app.include_router(gdpr_router)
 
 # Setup Templates and Static Files
 templates = Jinja2Templates(directory="templates")

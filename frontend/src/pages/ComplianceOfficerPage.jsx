@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 
 const NAV_ITEMS = [
   {
@@ -7,6 +7,16 @@ const NAV_ITEMS = [
     icon: (
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'gdpr',
+    label: 'GDPR AI EVALUATION',
+    icon: (
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4l3 3" />
       </svg>
     ),
   },
@@ -42,11 +52,57 @@ const FRAMEWORKS = [
   { id: 'iso',     label: 'ISO 27001', color: '#d97706', trackColor: '#fef3c7', hasCritical: true  },
 ]
 
+const RISK_STYLE = {
+  LOW:      { color: '#16a34a', bg: '#d1fae5', border: '#10b981' },
+  MEDIUM:   { color: '#d97706', bg: '#fef3c7', border: '#f59e0b' },
+  HIGH:     { color: '#dc2626', bg: '#fee2e2', border: '#ef4444' },
+  CRITICAL: { color: '#7c3aed', bg: '#ede9fe', border: '#7c3aed' },
+}
+
+const WINDOW_OPTIONS = [
+  { label: 'Last 24 hours', value: 24 },
+  { label: 'Last 48 hours', value: 48 },
+  { label: 'Last 7 days',   value: 168 },
+]
+
 export default function ComplianceOfficerPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('overview')
   const [darkMode, setDarkMode] = useState(false)
+
+  // GDPR evaluation state
+  const [gdprReport, setGdprReport]     = useState(null)
+  const [gdprLoading, setGdprLoading]   = useState(false)
+  const [gdprError, setGdprError]       = useState('')
+  const [gdprWindow, setGdprWindow]     = useState(24)
+  const [gdprLlmStatus, setGdprLlmStatus] = useState(null)
+
   const dm = darkMode
   const styles = makeStyles(dm)
+
+  const runGdprEvaluation = useCallback(async () => {
+    setGdprLoading(true)
+    setGdprError('')
+    try {
+      const res = await fetch(`/api/v1/gdpr/evaluate?hours=${gdprWindow}`, { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setGdprReport(data)
+    } catch (err) {
+      setGdprError(err.message || 'Evaluation failed')
+    } finally {
+      setGdprLoading(false)
+    }
+  }, [gdprWindow])
+
+  const checkGdprStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/v1/gdpr/status')
+      if (res.ok) setGdprLlmStatus(await res.json())
+    } catch {}
+  }, [])
 
   return (
     <div style={styles.wrapper}>
@@ -122,12 +178,15 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
           <div>
             <h1 style={{ ...styles.pageTitle, margin: '0 0 4px 0' }}>
               {activePage === 'overview' ? 'Compliance Overview'
+                : activePage === 'gdpr'     ? 'GDPR AI Evaluation'
                 : activePage === 'findings' ? 'Open Compliance Findings'
                 : 'Policy Rule Engine'}
             </h1>
             <p style={styles.pageSubtitle}>
               {activePage === 'overview'
                 ? 'Monitor your compliance status across all frameworks'
+                : activePage === 'gdpr'
+                ? 'AI-powered GDPR compliance analysis of system activity logs using Ollama'
                 : activePage === 'findings'
                 ? 'Remediation Tracker — Sorted by Due Date'
                 : 'Machine-Executable Compliance Policies'}
@@ -262,6 +321,189 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
             </div>
           </div>
         </>}
+
+        {/* ── GDPR AI EVALUATION ── */}
+        {activePage === 'gdpr' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+            {/* Controls bar */}
+            <div style={{ ...styles.chartCard, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: dm ? '#94a3b8' : '#6b7280', letterSpacing: '0.5px' }}>WINDOW</span>
+                  <select
+                    value={gdprWindow}
+                    onChange={e => setGdprWindow(Number(e.target.value))}
+                    style={{ padding: '7px 12px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, background: dm ? '#0f172a' : '#f9fafb', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
+                  >
+                    {WINDOW_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+
+                {/* LLM status chip */}
+                {gdprLlmStatus && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', background: gdprLlmStatus.llm_available ? '#d1fae5' : '#fef3c7', color: gdprLlmStatus.llm_available ? '#065f46' : '#92400e', border: `1px solid ${gdprLlmStatus.llm_available ? '#10b981' : '#f59e0b'}` }}>
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: gdprLlmStatus.llm_available ? '#16a34a' : '#f59e0b', display: 'inline-block' }} />
+                    {gdprLlmStatus.llm_available ? `Ollama · ${gdprLlmStatus.model}` : 'Rule-based fallback'}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={checkGdprStatus}
+                  style={{ padding: '8px 16px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, background: 'transparent', color: dm ? '#94a3b8' : '#6b7280', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Check AI Status
+                </button>
+                <button
+                  onClick={runGdprEvaluation}
+                  disabled={gdprLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 22px', borderRadius: '8px', border: 'none', background: gdprLoading ? '#94a3b8' : '#7c3aed', color: 'white', fontSize: '13px', fontWeight: '700', cursor: gdprLoading ? 'not-allowed' : 'pointer' }}
+                >
+                  {gdprLoading ? (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                      Evaluating…
+                    </>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
+                      </svg>
+                      Run GDPR Evaluation
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {gdprError && (
+              <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '12px', padding: '16px 20px', fontSize: '13px', color: '#dc2626', fontWeight: '600' }}>
+                Evaluation failed: {gdprError}
+              </div>
+            )}
+
+            {/* Loading placeholder */}
+            {gdprLoading && (
+              <div style={{ ...styles.chartCard, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', padding: '60px 24px' }}>
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1.2s linear infinite' }}>
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                <div style={{ fontSize: '15px', fontWeight: '600', color: dm ? '#94a3b8' : '#6b7280' }}>AI is analysing system logs against GDPR…</div>
+                <div style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>This may take 15–60 seconds depending on the Ollama model</div>
+              </div>
+            )}
+
+            {/* Report */}
+            {gdprReport && !gdprLoading && (() => {
+              const rs = RISK_STYLE[gdprReport.risk_level] || RISK_STYLE.MEDIUM
+              const scoreColor = gdprReport.overall_score >= 80 ? '#16a34a' : gdprReport.overall_score >= 60 ? '#d97706' : '#dc2626'
+              return (
+                <>
+                  {/* Score + summary card */}
+                  <div style={{ ...styles.chartCard, display: 'flex', gap: '32px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    {/* Circular score */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                      <svg width="120" height="120" viewBox="0 0 120 120">
+                        <circle cx="60" cy="60" r="50" fill="none" stroke={dm ? '#334155' : '#f3f4f6'} strokeWidth="10" />
+                        <circle cx="60" cy="60" r="50" fill="none" stroke={scoreColor} strokeWidth="10"
+                          strokeDasharray={`${(gdprReport.overall_score / 100) * 314} 314`}
+                          strokeLinecap="round"
+                          transform="rotate(-90 60 60)"
+                          style={{ transition: 'stroke-dasharray 0.8s ease' }}
+                        />
+                        <text x="60" y="56" textAnchor="middle" fontSize="26" fontWeight="800" fill={scoreColor}>{gdprReport.overall_score}</text>
+                        <text x="60" y="74" textAnchor="middle" fontSize="11" fill={dm ? '#94a3b8' : '#6b7280'}>/ 100</text>
+                      </svg>
+                      <span style={{ padding: '4px 16px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', background: rs.bg, color: rs.color, border: `1px solid ${rs.border}` }}>
+                        {gdprReport.risk_level} RISK
+                      </span>
+                    </div>
+
+                    {/* Summary info */}
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '8px' }}>EXECUTIVE SUMMARY</div>
+                      <p style={{ fontSize: '14px', color: dm ? '#cbd5e1' : '#374151', lineHeight: '1.7', margin: '0 0 16px' }}>{gdprReport.summary}</p>
+                      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                        {[
+                          { label: 'Events Analysed', value: gdprReport.events_analyzed },
+                          { label: 'Window', value: `${gdprReport.log_window_hours}h` },
+                          { label: 'Findings', value: gdprReport.findings?.length ?? 0 },
+                          { label: 'Model', value: gdprReport.model_used },
+                        ].map(({ label, value }) => (
+                          <div key={label}>
+                            <div style={{ fontSize: '11px', color: dm ? '#64748b' : '#9ca3af', fontWeight: '600', letterSpacing: '0.4px', marginBottom: '2px' }}>{label}</div>
+                            <div style={{ fontSize: '14px', fontWeight: '700', color: dm ? '#f1f5f9' : '#111827' }}>{value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: '12px', fontSize: '11px', color: dm ? '#475569' : '#9ca3af' }}>
+                        Evaluated: {new Date(gdprReport.evaluated_at).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Findings list */}
+                  {gdprReport.findings && gdprReport.findings.length > 0 && (
+                    <div style={styles.chartCard}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '16px' }}>
+                        GDPR FINDINGS — {gdprReport.findings.length} ARTICLE(S) ASSESSED
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {gdprReport.findings.map((f, i) => {
+                          const fs = RISK_STYLE[f.risk_level] || RISK_STYLE.MEDIUM
+                          return (
+                            <div key={i} style={{ background: dm ? '#0f172a' : '#f8fafc', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderLeft: `4px solid ${fs.border}`, borderRadius: '10px', padding: '16px 20px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '800', background: '#ede9fe', color: '#7c3aed', border: '1px solid #c4b5fd', letterSpacing: '0.4px' }}>
+                                  {f.article}
+                                </span>
+                                <span style={{ fontSize: '14px', fontWeight: '700', color: dm ? '#f1f5f9' : '#111827' }}>{f.title}</span>
+                                <span style={{ marginLeft: 'auto', padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', background: fs.bg, color: fs.color, border: `1px solid ${fs.border}` }}>
+                                  {f.risk_level}
+                                </span>
+                              </div>
+                              <p style={{ fontSize: '13px', color: dm ? '#94a3b8' : '#4b5563', margin: '0 0 8px', lineHeight: '1.6' }}>
+                                <strong style={{ color: dm ? '#cbd5e1' : '#111827' }}>Observation: </strong>{f.observation}
+                              </p>
+                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', background: dm ? '#1e293b' : '#fff', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '8px', padding: '10px 14px' }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: '2px' }}>
+                                  <polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                                </svg>
+                                <p style={{ fontSize: '13px', color: dm ? '#a78bfa' : '#5b21b6', margin: 0, lineHeight: '1.6' }}>
+                                  <strong>Recommendation: </strong>{f.recommendation}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+
+            {/* Empty state */}
+            {!gdprReport && !gdprLoading && !gdprError && (
+              <div style={{ ...styles.chartCard, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', padding: '60px 24px', textAlign: 'center' }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={dm ? '#475569' : '#d1d5db'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" />
+                </svg>
+                <div style={{ fontSize: '16px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af' }}>No evaluation run yet</div>
+                <div style={{ fontSize: '13px', color: dm ? '#475569' : '#d1d5db', maxWidth: '380px' }}>
+                  Click <strong>Run GDPR Evaluation</strong> to analyse your system activity logs against GDPR Articles 5, 17, 25, 32, and 33 using the Ollama AI model.
+                </div>
+              </div>
+            )}
+
+            <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
 
         {/* ── OPEN FINDINGS ── */}
         {activePage === 'findings' && (
