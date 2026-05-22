@@ -111,8 +111,7 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
 
   const toMs = (ts) => {
     if (!ts) return null
-    const s = /[Z+]/.test(ts) ? ts : ts + 'Z'
-    return new Date(s).getTime()
+    return new Date(ts).getTime()
   }
 
   const filterActive = !!(appliedFrom || appliedTo)
@@ -131,8 +130,7 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
     ? filteredLogs.length
     : auditLogs.filter(log => {
         if (!log.timestamp) return false
-        const ts = /[Z+]/.test(log.timestamp) ? log.timestamp : log.timestamp + 'Z'
-        return new Date(ts).getTime() >= cutoff24h
+        return new Date(log.timestamp).getTime() >= cutoff24h
       }).length
 
   const blockedCount = (filterActive ? filteredLogs : auditLogs).filter(log => {
