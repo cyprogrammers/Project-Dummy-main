@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 const NAV_ITEMS = [
   {
@@ -70,14 +70,35 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
   const [darkMode, setDarkMode] = useState(false)
 
   // GDPR evaluation state
-  const [gdprReport, setGdprReport]     = useState(null)
-  const [gdprLoading, setGdprLoading]   = useState(false)
-  const [gdprError, setGdprError]       = useState('')
-  const [gdprWindow, setGdprWindow]     = useState(24)
-  const [gdprLlmStatus, setGdprLlmStatus] = useState(null)
+  const [gdprReport, setGdprReport]         = useState(null)
+  const [gdprLoading, setGdprLoading]       = useState(false)
+  const [gdprError, setGdprError]           = useState('')
+  const [gdprWindow, setGdprWindow]         = useState(24)
+  const [gdprLlmStatus, setGdprLlmStatus]   = useState(null)
+  const [gdprOverview, setGdprOverview]     = useState(null)
+  const [gdprOverviewLoading, setGdprOverviewLoading] = useState(false)
 
   const dm = darkMode
   const styles = makeStyles(dm)
+
+  // Auto-fetch GDPR overview data for the current day on mount
+  useEffect(() => {
+    const fetchTodayGdpr = async () => {
+      setGdprOverviewLoading(true)
+      try {
+        const now = new Date()
+        // Hours elapsed since local midnight (minimum 1h to avoid division edge cases)
+        const hoursSinceMidnight = Math.max(1, now.getHours() + Math.ceil(now.getMinutes() / 60))
+        const res = await fetch(`/api/v1/gdpr/evaluate?hours=${hoursSinceMidnight}`, { method: 'POST' })
+        if (res.ok) setGdprOverview(await res.json())
+      } catch {
+        // Silent — overview card stays at dashes if backend is unreachable
+      } finally {
+        setGdprOverviewLoading(false)
+      }
+    }
+    fetchTodayGdpr()
+  }, [])
 
   const runGdprEvaluation = useCallback(async () => {
     setGdprLoading(true)
@@ -215,29 +236,44 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
         {activePage === 'overview' && <>
           {/* Framework Cards */}
           <div style={styles.frameworkGrid}>
-            {FRAMEWORKS.map(({ id, label, color, trackColor, hasCritical }) => (
-              <div key={id} style={styles.frameworkCard}>
-                <span style={styles.frameworkLabel}>{label}</span>
-                <div style={{ fontSize: '35px', fontWeight: '800', color, lineHeight: '1.1', margin: '8px 0' }}>—%</div>
-                {/* Progress bar */}
-                <div style={{ ...styles.progressTrack, background: dm ? '#334155' : trackColor }}>
-                  <div style={{ ...styles.progressBar, background: color, width: '0%' }} />
-                </div>
-                <div style={styles.frameworkFooter}>
-                  <span style={styles.findingsText}>— open findings</span>
-                  {hasCritical && (
-                    <span style={styles.criticalBadge}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10" />
-                        <line x1="12" y1="8" x2="12" y2="12" />
-                        <line x1="12" y1="16" x2="12.01" y2="16" />
-                      </svg>
-                      <span style={{ color: '#ef4444', fontWeight: '600', fontSize: '13px' }}>— critical</span>
+            {FRAMEWORKS.map(({ id, label, color, trackColor, hasCritical }) => {
+              const isGdpr = id === 'gdpr'
+              const loading = isGdpr && gdprOverviewLoading
+              const score = isGdpr && gdprOverview ? gdprOverview.overall_score : null
+              const findings = isGdpr && gdprOverview ? gdprOverview.findings ?? [] : null
+              const openFindings = findings !== null ? findings.length : null
+              const criticalCount = findings !== null ? findings.filter(f => f.risk_level === 'CRITICAL').length : null
+
+              return (
+                <div key={id} style={styles.frameworkCard}>
+                  <span style={styles.frameworkLabel}>{label}</span>
+                  <div style={{ fontSize: '35px', fontWeight: '800', color, lineHeight: '1.1', margin: '8px 0' }}>
+                    {loading ? '…' : score !== null ? `${score}%` : '—%'}
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{ ...styles.progressTrack, background: dm ? '#334155' : trackColor }}>
+                    <div style={{ ...styles.progressBar, background: color, width: score !== null ? `${score}%` : '0%', transition: 'width 0.8s ease' }} />
+                  </div>
+                  <div style={styles.frameworkFooter}>
+                    <span style={styles.findingsText}>
+                      {loading ? '…' : openFindings !== null ? `${openFindings} open finding${openFindings !== 1 ? 's' : ''}` : '— open findings'}
                     </span>
-                  )}
+                    {hasCritical && (
+                      <span style={styles.criticalBadge}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="8" x2="12" y2="12" />
+                          <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        <span style={{ color: '#ef4444', fontWeight: '600', fontSize: '13px' }}>
+                          {loading ? '…' : criticalCount !== null ? `${criticalCount} critical` : '— critical'}
+                        </span>
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Control Domain Adherence Radar */}
