@@ -520,6 +520,54 @@ async def update_status(
                            actor=actor, target_user=u,
                            details={"from": old, "to": body.status, "reason": body.reason},
                            ip_address=au.get_client_ip(request))
+
+    # ── Status change email ───────────────────────────────────────────────────
+    if body.status == UserStatus.suspended and old == UserStatus.active:
+        asyncio.create_task(
+            asyncio.to_thread(
+                sendEmail,
+                u.email,
+                "AITRMS — Account Suspended",
+                "Your Account Has Been Suspended",
+                f"Hello {u.first_name},<br><br>"
+                "Your AITRMS account has been suspended by an administrator.<br>"
+                f"Reason: <strong>{body.reason or 'Not specified'}</strong>.<br><br>"
+                "Contact your IT Administrator if you believe this is an error.",
+                button_text="Contact IT Support",
+                button_link="mailto:itadmin@cut.ac.zw",
+            )
+        )
+    elif body.status == UserStatus.active and old == UserStatus.suspended:
+        asyncio.create_task(
+            asyncio.to_thread(
+                sendEmail,
+                u.email,
+                "AITRMS — Account Reactivated",
+                "Your Account Has Been Reactivated",
+                f"Hello {u.first_name},<br><br>"
+                "Good news — your AITRMS account has been reactivated. "
+                "You can now log in and resume your work.",
+                button_text="Log In to AITRMS",
+                button_link="http://localhost:5173",
+            )
+        )
+    elif body.status == UserStatus.locked and old == UserStatus.active:
+        asyncio.create_task(
+            asyncio.to_thread(
+                sendEmail,
+                u.email,
+                "AITRMS — Account Locked",
+                "Your Account Has Been Locked",
+                f"Hello {u.first_name},<br><br>"
+                "Your AITRMS account has been locked by an administrator.<br>"
+                f"Reason: <strong>{body.reason or 'Not specified'}</strong>.<br><br>"
+                "Contact your IT Administrator to unlock it.",
+                button_text="Contact IT Support",
+                button_link="mailto:itadmin@cut.ac.zw",
+            )
+        )
+    # ─────────────────────────────────────────────────────────────────────────
+
     return u
 
 
@@ -567,6 +615,24 @@ async def change_password(
     await db.commit()
     await au.log_activity(db, ActivityAction.password_change, ActivityResult.success,
                            actor=actor, target_user=u, ip_address=au.get_client_ip(request))
+
+    # ── Password change alert ─────────────────────────────────────────────────
+    asyncio.create_task(
+        asyncio.to_thread(
+            sendEmail,
+            u.email,
+            "AITRMS — Password Changed",
+            "Your Password Was Changed",
+            f"Hello {u.first_name},<br><br>"
+            "Your AITRMS account password was just changed. "
+            "If you made this change, no action is needed.<br><br>"
+            "<strong>If you did not make this change, contact your IT Administrator immediately.</strong>",
+            button_text="Contact IT Support",
+            button_link="mailto:itadmin@cut.ac.zw",
+        )
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     return Msg(message="Password updated")
 
 
@@ -674,6 +740,24 @@ async def update_user_permissions(
                                details={"reason": "All module read permissions revoked", "auto": True},
                                ip_address=au.get_client_ip(request))
         status_note = " User suspended — all read access revoked."
+
+        # ── Auto-suspend email ────────────────────────────────────────────────
+        asyncio.create_task(
+            asyncio.to_thread(
+                sendEmail,
+                u.email,
+                "AITRMS — Access Revoked",
+                "Your System Access Has Been Revoked",
+                f"Hello {u.first_name},<br><br>"
+                "An administrator has revoked all your module permissions on AITRMS. "
+                "Your account has been suspended as a result.<br><br>"
+                "Contact your IT Administrator to restore access.",
+                button_text="Contact IT Support",
+                button_link="mailto:itadmin@cut.ac.zw",
+            )
+        )
+        # ─────────────────────────────────────────────────────────────────────
+
     elif has_read and u.status == UserStatus.suspended:
         u.status = UserStatus.active
         u.failed_login_attempts = 0
@@ -683,6 +767,22 @@ async def update_user_permissions(
                                details={"reason": "Module read permissions restored", "auto": True},
                                ip_address=au.get_client_ip(request))
         status_note = " User reactivated — read access restored."
+
+        # ── Auto-reactivate email ─────────────────────────────────────────────
+        asyncio.create_task(
+            asyncio.to_thread(
+                sendEmail,
+                u.email,
+                "AITRMS — Access Restored",
+                "Your System Access Has Been Restored",
+                f"Hello {u.first_name},<br><br>"
+                "An administrator has restored your module permissions on AITRMS. "
+                "Your account is active again and you can log in.",
+                button_text="Log In to AITRMS",
+                button_link="http://localhost:5173",
+            )
+        )
+        # ─────────────────────────────────────────────────────────────────────
 
     await au.log_activity(db, ActivityAction.perm_update, ActivityResult.success,
                            actor=actor, target_user=u,
@@ -793,6 +893,23 @@ async def assign_user(
     await db.commit()
     await au.log_activity(db, ActivityAction.role_assign, ActivityResult.success,
                            actor=actor, target_user=u, role=r, ip_address=au.get_client_ip(request))
+
+    # ── Role assigned email ───────────────────────────────────────────────────
+    asyncio.create_task(
+        asyncio.to_thread(
+            sendEmail,
+            u.email,
+            f"AITRMS — Role Assigned: {r.name}",
+            "Your Access Role Has Been Updated",
+            f"Hello {u.first_name},<br><br>"
+            f"You have been assigned the <strong>{r.name}</strong> role on AITRMS. "
+            "Your access permissions have been updated accordingly.",
+            button_text="Log In to AITRMS",
+            button_link="http://localhost:5173",
+        )
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     return Msg(message=f"Assigned to '{r.name}'")
 
 
@@ -809,6 +926,24 @@ async def remove_user_from_role(
     await db.delete(ur); await db.commit()
     await au.log_activity(db, ActivityAction.role_remove, ActivityResult.success,
                            actor=actor, target_user=u, role=r, ip_address=au.get_client_ip(request))
+
+    # ── Role removed email ────────────────────────────────────────────────────
+    asyncio.create_task(
+        asyncio.to_thread(
+            sendEmail,
+            u.email,
+            f"AITRMS — Role Removed: {r.name}",
+            "Your Access Role Has Been Updated",
+            f"Hello {u.first_name},<br><br>"
+            f"Your <strong>{r.name}</strong> role has been removed on AITRMS. "
+            "Your access permissions have been updated accordingly.<br><br>"
+            "Contact your IT Administrator if you have any questions.",
+            button_text="Contact IT Support",
+            button_link="mailto:itadmin@cut.ac.zw",
+        )
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     return Msg(message=f"Removed from '{r.name}'")
 
 
@@ -939,8 +1074,26 @@ async def kill_session(
     await au.log_activity(db, ActivityAction.session_kill, ActivityResult.success,
                            actor=actor, target_user=target,
                            details={"session_id": sid}, ip_address=au.get_client_ip(request))
-    return Msg(message=f"Session {sid} terminated")
 
+    # ── Session killed email ──────────────────────────────────────────────────
+    if target:
+        asyncio.create_task(
+            asyncio.to_thread(
+                sendEmail,
+                target.email,
+                "AITRMS — Active Session Terminated",
+                "Your Session Was Ended by an Administrator",
+                f"Hello {target.first_name},<br><br>"
+                "An administrator has terminated your active AITRMS session. "
+                "You will need to log in again to continue.<br><br>"
+                "If you were not expecting this, contact your IT Administrator.",
+                button_text="Log In Again",
+                button_link="http://localhost:5173",
+            )
+        )
+    # ─────────────────────────────────────────────────────────────────────────
+
+    return Msg(message=f"Session {sid} terminated")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ACTIVITY LOG
