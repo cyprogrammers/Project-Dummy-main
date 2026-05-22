@@ -130,18 +130,19 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
     return true
   })
 
-  const cutoff24h = Date.now() - 24 * 60 * 60 * 1000
-  const count24h = filterActive
-    ? filteredLogs.length
-    : auditLogs.filter(log => {
-        if (!log.timestamp) return false
-        return new Date(log.timestamp).getTime() >= cutoff24h
-      }).length
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000
 
-  const blockedCount = (filterActive ? filteredLogs : auditLogs).filter(log => {
-    const r = String(log.result).toUpperCase()
-    return r === 'FAILED' || r === 'ENFORCED'
-  }).length
+  const isTodayLocal = (ts) => {
+    if (!ts) return false
+    const t = new Date(ts).getTime()
+    return t >= todayStart && t < todayEnd
+  }
+
+  const baseLogs = filterActive ? filteredLogs : auditLogs.filter(log => isTodayLocal(log.timestamp))
+
+  const count24h = baseLogs.length
 
   const ACCESS_CHANGE_ACTIONS = new Set([
     'ROLE_ASSIGN', 'ROLE_REMOVE',
@@ -150,7 +151,13 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
     'USER_CREATE', 'USER_UPDATE', 'USER_DELETE',
     'MFA_TOGGLE', 'PASSWORD_CHANGE',
   ])
-  const accessChangesCount = (filterActive ? filteredLogs : auditLogs).filter(log =>
+
+  const blockedCount = baseLogs.filter(log => {
+    const r = String(log.result).toUpperCase()
+    return r === 'FAILED' || r === 'ENFORCED'
+  }).length
+
+  const accessChangesCount = baseLogs.filter(log =>
     ACCESS_CHANGE_ACTIONS.has(String(log.action).toUpperCase())
   ).length
 
@@ -318,7 +325,7 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                 <button onClick={clearFilter} style={{ padding: '6px 16px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: 'transparent', color: dm ? '#94a3b8' : '#6b7280', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>Clear</button>
               )}
               {(appliedFrom || appliedTo) && (
-                <span style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>Showing {filteredLogs.length} of {auditLogs.length} events</span>
+                <span style={{ fontSize: '12px', color: dm ? '#64748b' : '#9ca3af' }}>Showing {baseLogs.length} of {auditLogs.length} events</span>
               )}
             </div>
           )}
@@ -336,9 +343,9 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                 <tbody>
                   {auditLoading ? (
                     <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading audit events…</td></tr>
-                  ) : filteredLogs.length === 0 ? (
-                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>{auditLogs.length === 0 ? 'No audit events recorded yet' : 'No events match the selected date range'}</td></tr>
-                  ) : filteredLogs.map((log, i, arr) => {
+                  ) : baseLogs.length === 0 ? (
+                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>{auditLogs.length === 0 ? 'No audit events recorded yet' : filterActive ? 'No events match the selected date range' : 'No audit events recorded today'}</td></tr>
+                  ) : baseLogs.map((log, i, arr) => {
                     const r = String(log.result).toUpperCase()
                     const resultColor = r === 'SUCCESS'  ? { background: '#d1fae5', color: '#065f46', border: '1px solid #10b981' }
                                       : r === 'FAILED'   ? { background: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444' }
