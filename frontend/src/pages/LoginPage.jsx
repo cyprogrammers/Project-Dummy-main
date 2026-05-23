@@ -19,10 +19,20 @@ export default function LoginPage({ onLogin }) {
   const [error,       setError]       = useState('')
   const [loading,     setLoading]     = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [popiaScore,  setPopiaScore]  = useState('—')
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(t)
+  }, [])
+
+  useEffect(() => {
+    const now = new Date()
+    const hours = Math.max(1, now.getHours() + Math.ceil(now.getMinutes() / 60))
+    fetch(`/api/v1/popia/evaluate?hours=${hours}`, { method: 'POST' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.overall_score != null) setPopiaScore(`${d.overall_score}%`) })
+      .catch(() => {})
   }, [])
 
   const formattedTime = currentTime.toLocaleString('en-GB', {
@@ -101,7 +111,7 @@ export default function LoginPage({ onLogin }) {
           {[
             { value: '—', color: '#ef4444', label: 'Critical CVEs Active'   },
             { value: '—', color: '#3b82f6', label: 'Endpoints Monitored'    },
-            { value: '—', color: '#14b8a6', label: 'POPIA Compliance'       },
+            { value: popiaScore, color: '#14b8a6', label: 'POPIA Compliance'       },
             { value: '—', color: '#f59e0b', label: 'Open Incidents'         },
           ].map(({ value, color, label }) => (
             <div key={label} style={styles.statCard}>

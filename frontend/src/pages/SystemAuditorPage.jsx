@@ -353,6 +353,48 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                                       : r === 'ENFORCED' ? { background: '#ffedd5', color: '#9a3412', border: '1px solid #f97316' }
                                       : r === 'DENIED'   ? { background: '#ede9fe', color: '#5b21b6', border: '1px solid #7c3aed' }
                                       :                    { background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }
+
+                    const action = String(log.action).toUpperCase()
+                    const d = log.details || {}
+
+                    // USER_DELETE logs details.email because target_user is already deleted before log_activity is called
+                    const targetEmail = log.target_user_email || d.email || log.role_name || null
+
+                    let targetLabel = null
+                    if (action === 'MFA_TOGGLE') {
+                      targetLabel = d.enabled === true  ? { text: 'MFA Enabled',  color: '#16a34a', bg: '#d1fae5' }
+                                  : d.enabled === false ? { text: 'MFA Disabled', color: '#b45309', bg: '#fef3c7' }
+                                  : null
+                    } else if (action === 'STATUS_CHANGE') {
+                      const to = String(d.to || '').toLowerCase()
+                      targetLabel = to === 'suspended' ? { text: 'Suspended',  color: '#991b1b', bg: '#fee2e2' }
+                                  : to === 'active'    ? { text: 'Activated',  color: '#065f46', bg: '#d1fae5' }
+                                  : to                 ? { text: to.charAt(0).toUpperCase() + to.slice(1), color: '#374151', bg: '#f3f4f6' }
+                                  : null
+                    } else if (action === 'USER_DELETE') {
+                      targetLabel = { text: 'User Deleted', color: '#991b1b', bg: '#fee2e2' }
+                    } else if (action === 'USER_CREATE') {
+                      targetLabel = { text: 'User Created', color: '#065f46', bg: '#d1fae5' }
+                    } else if (action === 'USER_UPDATE') {
+                      const fields = Object.keys(d)
+                      const fieldText = fields.length > 0
+                        ? fields.map(f => f.replace(/_/g, ' ')).join(', ')
+                        : 'profile'
+                      targetLabel = { text: fieldText.charAt(0).toUpperCase() + fieldText.slice(1) + ' updated', color: '#1d4ed8', bg: '#dbeafe' }
+                    } else if (action === 'PASSWORD_CHANGE') {
+                      targetLabel = { text: 'Password Changed', color: '#1d4ed8', bg: '#dbeafe' }
+                    } else if (action === 'ROLE_ASSIGN') {
+                      targetLabel = log.role_name ? { text: `Assigned: ${log.role_name}`, color: '#7c3aed', bg: '#ede9fe' } : null
+                    } else if (action === 'ROLE_REMOVE') {
+                      targetLabel = log.role_name ? { text: `Removed: ${log.role_name}`, color: '#9a3412', bg: '#ffedd5' } : null
+                    } else if (action === 'PERM_UPDATE') {
+                      targetLabel = { text: 'Permissions Updated', color: '#7c3aed', bg: '#ede9fe' }
+                    } else if (action === 'PERM_REQUEST') {
+                      targetLabel = { text: 'Permission Requested', color: '#d97706', bg: '#fef3c7' }
+                    } else if (action === 'SESSION_KILL') {
+                      targetLabel = { text: 'Session Terminated', color: '#9a3412', bg: '#ffedd5' }
+                    }
+
                     return (
                       <tr key={log.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
                         <td style={styles.tdTimestamp}>{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
@@ -361,11 +403,20 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                         </td>
                         <td style={styles.td}>
                           <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', border: `1px solid ${dm ? '#0891b2' : '#67e8f9'}`, color: dm ? '#22d3ee' : '#0891b2', background: 'transparent' }}>
-                            {String(log.action).toUpperCase()}
+                            {action}
                           </span>
                         </td>
-                        <td style={{ ...styles.td, color: dm ? '#94a3b8' : '#6b7280', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {log.target_user_email || log.role_name || '—'}
+                        <td style={{ ...styles.td, maxWidth: '220px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            <span style={{ color: dm ? '#94a3b8' : '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {targetEmail || '—'}
+                            </span>
+                            {targetLabel && (
+                              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.3px', background: targetLabel.bg, color: targetLabel.color, alignSelf: 'flex-start', whiteSpace: 'nowrap' }}>
+                                {targetLabel.text}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={styles.td}>{log.ip_address || '—'}</td>
                         <td style={styles.td}>

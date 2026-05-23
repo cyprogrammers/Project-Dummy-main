@@ -1514,13 +1514,17 @@ export default function DashboardPage({ onLogout, currentUser }) {
       {/* Main Content */}
       <main style={styles.main}>
         {/* Page Header */}
-        <div style={{ ...styles.card, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', boxSizing: 'border-box' }}>
-          <div style={styles.headerLeft}>
-            {activePage === 'backup' && (
-              <BackupManagementTab darkMode={darkMode} />
-            )}
+        {activePage !== 'backup' && (
+          <div style={{ ...styles.card, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', boxSizing: 'border-box' }}>
+            <div style={styles.headerLeft}>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* ── BACKUP TAB ── */}
+        {activePage === 'backup' && (
+          <BackupManagementTab darkMode={darkMode} />
+        )}
 
         {/* ── ROLE PROFILE PAGE ── */}
         {activePage === 'access' && managingRole && (
