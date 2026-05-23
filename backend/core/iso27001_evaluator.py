@@ -10,7 +10,7 @@ if the LLM is unavailable.
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
@@ -68,8 +68,10 @@ class ISO27001EvaluationReport(BaseModel):
 
 # ── Stats collection ──────────────────────────────────────────────────────────
 
-async def _gather_stats(hours: int) -> dict:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+async def _gather_stats(hours: int, cutoff: Optional[datetime] = None) -> dict:
+    if cutoff is None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    hours = max(1, round((datetime.now(timezone.utc) - cutoff).total_seconds() / 3600))
 
     async with AsyncSessionLocal() as db:
         total_q = await db.execute(
@@ -206,121 +208,160 @@ def _rule_based_report(stats: dict) -> ISO27001EvaluationReport:
     findings: List[ISO27001Finding] = []
     score = 100
 
-    # A.9.3.1 — Use of Secret Authentication Information (MFA)
+    # A.9.3.1 — MFA adoption
     mfa_rate = stats["mfa_adoption_rate_pct"]
     if mfa_rate < 50:
         findings.append(ISO27001Finding(
-            control="A.9.3.1",
-            title="Use of Secret Authentication Information",
-            risk_level="HIGH",
-            observation=f"Only {mfa_rate}% of users have MFA enabled ({stats['mfa_enabled_users']} of {stats['total_users']}). ISO 27001 A.9.3.1 requires users to follow organisational practices for multi-factor authentication.",
-            recommendation="Enforce MFA organisation-wide. Update the access control policy (A.9.1.1) to mandate MFA and configure role settings to require it before access is granted.",
+            control="A.9.3.1", title="Use of Secret Authentication Information", risk_level="HIGH",
+            observation=f"Only {mfa_rate}% of users have MFA enabled ({stats['mfa_enabled_users']} of {stats['total_users']}). A.9.3.1 requires strong authentication practices.",
+            recommendation="Enforce MFA organisation-wide. Update the access control policy (A.9.1.1) to mandate MFA before access is granted.",
         ))
         score -= 20
     elif mfa_rate < 80:
         findings.append(ISO27001Finding(
-            control="A.9.3.1",
-            title="Use of Secret Authentication Information",
-            risk_level="MEDIUM",
+            control="A.9.3.1", title="Use of Secret Authentication Information", risk_level="MEDIUM",
             observation=f"MFA adoption is {mfa_rate}% — {stats['total_users'] - stats['mfa_enabled_users']} user(s) still rely on single-factor authentication.",
-            recommendation="Issue a mandatory MFA enrolment notice. Track adoption weekly until 100% coverage is achieved across all roles.",
+            recommendation="Issue a mandatory MFA enrolment notice. Track adoption weekly until 100% coverage is achieved.",
         ))
         score -= 10
-
-    # A.9.4.2 — Secure Log-on Procedures (failed logins / brute force)
-    if stats["failed_logins"] > 20:
-        level = "HIGH" if stats["failed_logins"] > 50 else "MEDIUM"
+    elif mfa_rate < 100:
         findings.append(ISO27001Finding(
-            control="A.9.4.2",
-            title="Secure Log-on Procedures",
-            risk_level=level,
-            observation=f"{stats['failed_logins']} failed login attempt(s) in {stats['window_hours']}h (failure rate: {stats['login_failure_rate_pct']}%). Elevated failure rates suggest a brute-force or credential-stuffing attack.",
-            recommendation="Verify that account lockout is active after 5 consecutive failures (A.9.4.2). Enable real-time alerting for burst login failures. Review source IPs for malicious patterns.",
+            control="A.9.3.1", title="Use of Secret Authentication Information", risk_level="LOW",
+            observation=f"MFA adoption is {mfa_rate}% — {stats['total_users'] - stats['mfa_enabled_users']} user(s) without two-factor authentication.",
+            recommendation="Complete MFA rollout to achieve full A.9.3.1 compliance across all roles.",
         ))
-        score -= 15 if level == "HIGH" else 8
+
+    # A.9.4.2 — Failed logins (any count reported)
+    if stats["failed_logins"] > 0:
+        fl = stats["failed_logins"]
+        if fl > 50:   level, deduction = "HIGH", 15
+        elif fl > 20: level, deduction = "MEDIUM", 8
+        elif fl > 5:  level, deduction = "MEDIUM", 5
+        else:         level, deduction = "LOW", 0
+        findings.append(ISO27001Finding(
+            control="A.9.4.2", title="Secure Log-on Procedures", risk_level=level,
+            observation=f"{fl} failed login attempt(s) in {stats['window_hours']}h (failure rate: {stats['login_failure_rate_pct']}%). {'Elevated — possible brute-force or credential-stuffing attack.' if fl > 5 else 'Low-level failures recorded — monitor for escalation.'}",
+            recommendation="Verify account lockout activates after 5 consecutive failures (A.9.4.2). Enable real-time alerting and review source IPs for malicious patterns.",
+        ))
+        score -= deduction
 
     # A.16.1.2 — Reporting Information Security Events (lockouts)
     if stats["auto_lockouts"] > 0:
         findings.append(ISO27001Finding(
-            control="A.16.1.2",
-            title="Reporting Information Security Events",
-            risk_level="MEDIUM",
-            observation=f"{stats['auto_lockouts']} account(s) automatically locked out — a potential security incident indicator per ISO 27001 A.16.",
-            recommendation="Treat each lockout as an information security event. Log it in the incident register, investigate the source, and escalate if a pattern of targeted attacks is identified.",
+            control="A.16.1.2", title="Reporting Information Security Events", risk_level="MEDIUM",
+            observation=f"{stats['auto_lockouts']} account(s) automatically locked out — a potential security incident indicator per A.16.",
+            recommendation="Treat each lockout as a security event. Log in the incident register, investigate the source, and escalate if a targeted attack pattern is identified.",
         ))
         score -= 5
 
-    # A.12.4.1 — Event Logging (no audit events = logging inactive)
+    # A.9.2.6 — User deletions
+    if stats["user_deletions"] > 0:
+        findings.append(ISO27001Finding(
+            control="A.9.2.6", title="Removal or Adjustment of Access Rights", risk_level="LOW",
+            observation=f"{stats['user_deletions']} user deletion(s) recorded. Access rights must be revoked promptly upon user departure.",
+            recommendation="Confirm all system access was revoked at deletion time. Retain the audit record for at least one year per the access management policy.",
+        ))
+
+    # A.9.2.2 — Permission changes (any count reported)
+    if stats["permission_updates"] > 0:
+        pu = stats["permission_updates"]
+        if pu > 10:   level, deduction = "MEDIUM", 8
+        elif pu > 3:  level, deduction = "LOW", 0
+        else:         level, deduction = "LOW", 0
+        findings.append(ISO27001Finding(
+            control="A.9.2.2", title="User Access Provisioning", risk_level=level,
+            observation=f"{pu} permission update(s) in {stats['window_hours']}h. {'High frequency indicates inadequate provisioning controls.' if pu > 10 else 'Access changes recorded — verify each followed the approval workflow.'}",
+            recommendation="Implement a formal access request and approval workflow. A.9.2.2 requires access rights to be granted only through a documented, authorised process.",
+        ))
+        score -= deduction
+
+    # A.9.2.5 — Role changes (any count reported)
+    if stats["role_changes"] > 0:
+        rc = stats["role_changes"]
+        level = "MEDIUM" if rc > 5 else "LOW"
+        findings.append(ISO27001Finding(
+            control="A.9.2.5", title="Review of User Access Rights", risk_level=level,
+            observation=f"{rc} role assignment/removal event(s) in {stats['window_hours']}h.",
+            recommendation="Ensure each role change was formally authorised. Schedule a quarterly access rights review to remove stale assignments (A.9.2.5).",
+        ))
+        if level == "MEDIUM": score -= 5
+
+    # A.9.2.1 — Account status changes
+    if stats["status_changes"] > 0:
+        findings.append(ISO27001Finding(
+            control="A.9.2.1", title="User Registration and De-registration", risk_level="LOW",
+            observation=f"{stats['status_changes']} account status change(s) (suspension/activation) recorded.",
+            recommendation="Verify each status change was authorised. Suspended accounts must not retain system access per A.9.2.1.",
+        ))
+
+    # A.9.4.3 — Password changes
+    if stats["password_changes"] > 0:
+        pc = stats["password_changes"]
+        if pc > 10:   level, deduction = "MEDIUM", 5
+        else:         level, deduction = "LOW", 0
+        findings.append(ISO27001Finding(
+            control="A.9.4.3", title="Password Management System", risk_level=level,
+            observation=f"{pc} password change(s) recorded in the last {stats['window_hours']}h. {'High frequency may indicate a forced reset following a security incident.' if pc > 10 else 'Password change(s) recorded — verify compliance with the password policy (A.9.4.3).'}",
+            recommendation="Confirm each password change satisfied policy requirements (minimum length, complexity, history). If bulk resets were triggered by a suspected compromise, open an incident record per A.16.1.2.",
+        ))
+        score -= deduction
+
+    # A.9.2.1 — User creations
+    if stats["user_creations"] > 0:
+        uc = stats["user_creations"]
+        if uc > 5:    level, deduction = "MEDIUM", 5
+        else:         level, deduction = "LOW", 0
+        findings.append(ISO27001Finding(
+            control="A.9.2.1", title="User Registration and De-registration — New Accounts", risk_level=level,
+            observation=f"{uc} new user account(s) created in the last {stats['window_hours']}h. {'Bulk provisioning events should be reviewed for compliance with the access control policy.' if uc > 5 else 'New account(s) provisioned — verify each followed the formal registration process.'}",
+            recommendation="Ensure every new account was authorised via the formal user registration process (A.9.2.1). Assign only the minimum access rights required (least privilege — A.9.2.2) and document the business justification.",
+        ))
+        score -= deduction
+
+    # A.9.2.1 — Suspended accounts (snapshot)
+    if stats["suspended_users"] > 0:
+        findings.append(ISO27001Finding(
+            control="A.9.2.1", title="User Registration and De-registration — Suspended Accounts", risk_level="LOW",
+            observation=f"{stats['suspended_users']} user account(s) currently in suspended state. Suspended accounts retain system credentials and must be reviewed periodically.",
+            recommendation="Review all suspended accounts. Permanently deactivate or delete accounts that will not be re-enabled. Ensure suspended credentials cannot be used to authenticate per the de-registration procedure (A.9.2.1).",
+        ))
+
+    # A.9.1.2 — Unique IPs
+    if stats["unique_source_ips"] > 5:
+        ui = stats["unique_source_ips"]
+        level = "MEDIUM" if ui > 10 else "LOW"
+        findings.append(ISO27001Finding(
+            control="A.9.1.2", title="Access to Networks and Network Services", risk_level=level,
+            observation=f"System activity originated from {ui} distinct IP address(es) in the evaluation window.",
+            recommendation="Verify all source IPs are within authorised network ranges. Consider ACLs or geo-fencing for roles that access sensitive data.",
+        ))
+        if level == "MEDIUM": score -= 5
+
+    # A.16.1.4 — Session kills (any count reported)
+    if stats["session_kills"] > 0:
+        sk = stats["session_kills"]
+        level = "MEDIUM" if sk > 3 else "LOW"
+        findings.append(ISO27001Finding(
+            control="A.16.1.4", title="Assessment of Information Security Events", risk_level=level,
+            observation=f"{sk} session termination(s) initiated. {'Elevated count may indicate active threat response.' if sk > 3 else 'Session kill(s) recorded — verify each was intentional.'}",
+            recommendation="Review the reason for each session termination. Log incidents in the incident register and complete root-cause analysis if security-related.",
+        ))
+        if level == "MEDIUM": score -= 5
+
+    # A.12.4.1 — No events = logging inactive
     if stats["total_events"] == 0:
         findings.append(ISO27001Finding(
-            control="A.12.4.1",
-            title="Event Logging",
-            risk_level="CRITICAL",
+            control="A.12.4.1", title="Event Logging", risk_level="CRITICAL",
             observation="No activity events recorded in the evaluation window. The audit logging system may be inactive or misconfigured.",
-            recommendation="Restore audit logging immediately. ISO 27001 A.12.4.1 requires event logs for user activities, faults, and information security events. Logging gaps are a major non-conformity.",
+            recommendation="Restore audit logging immediately. A.12.4.1 requires event logs for all user activities and security events. Logging gaps are a major non-conformity.",
         ))
         score -= 30
 
-    # A.9.2.2 — User Access Provisioning (excessive permission changes)
-    if stats["permission_updates"] > 10:
-        findings.append(ISO27001Finding(
-            control="A.9.2.2",
-            title="User Access Provisioning",
-            risk_level="MEDIUM",
-            observation=f"{stats['permission_updates']} permission update(s) in {stats['window_hours']}h. High frequency of access changes may indicate inadequate provisioning controls.",
-            recommendation="Implement a formal access request and approval workflow. ISO 27001 A.9.2.2 requires that access rights be granted only through a documented process authorised by the asset owner.",
-        ))
-        score -= 8
-
-    # A.9.2.6 — Removal or Adjustment of Access Rights (user deletions)
-    if stats["user_deletions"] > 0:
-        findings.append(ISO27001Finding(
-            control="A.9.2.6",
-            title="Removal or Adjustment of Access Rights",
-            risk_level="LOW",
-            observation=f"{stats['user_deletions']} user deletion(s) recorded. Access rights must be revoked promptly upon user departure.",
-            recommendation="Confirm all system access (email, VPN, applications) was revoked at the time of deletion. Retain the deletion audit record for at least one year per the access management policy.",
-        ))
-
-    # A.9.1.2 — Access to Networks and Network Services (many unique IPs)
-    if stats["unique_source_ips"] > 10:
-        findings.append(ISO27001Finding(
-            control="A.9.1.2",
-            title="Access to Networks and Network Services",
-            risk_level="MEDIUM",
-            observation=f"System activity originated from {stats['unique_source_ips']} distinct IP addresses in the evaluation window.",
-            recommendation="Verify all source IPs are within authorised network ranges. Consider network access control lists (ACLs) or geo-fencing for roles that access sensitive data.",
-        ))
-        score -= 5
-
-    # A.9.2.5 — Review of User Access Rights (role changes)
-    if stats["role_changes"] > 5:
-        findings.append(ISO27001Finding(
-            control="A.9.2.5",
-            title="Review of User Access Rights",
-            risk_level="LOW",
-            observation=f"{stats['role_changes']} role assignment/removal event(s) in {stats['window_hours']}h. ISO 27001 requires periodic access reviews to validate role assignments.",
-            recommendation="Ensure each role change was formally authorised. Schedule a quarterly access rights review across all roles to remove stale assignments (A.9.2.5).",
-        ))
-
-    # A.16.1.4 — Assessment of and Decision on Information Security Events (session kills)
-    if stats["session_kills"] > 3:
-        findings.append(ISO27001Finding(
-            control="A.16.1.4",
-            title="Assessment of Information Security Events",
-            risk_level="MEDIUM",
-            observation=f"{stats['session_kills']} session termination(s) initiated. Elevated session kills may indicate active threat response or policy enforcement.",
-            recommendation="Review the reason for each session termination. If triggered by a security incident, ensure the event is logged in the incident register and root-cause analysis is completed.",
-        ))
-        score -= 5
-
     if not findings:
         findings.append(ISO27001Finding(
-            control="All Controls",
-            title="General ISMS Compliance Status",
-            risk_level="LOW",
-            observation="No significant ISO 27001 control violations detected in the evaluation window.",
-            recommendation="Continue monitoring. Conduct a formal internal ISMS audit per clause 9.2 and review the Statement of Applicability (SoA) annually.",
+            control="All Controls", title="General ISMS Compliance Status", risk_level="LOW",
+            observation="No ISO 27001 control concerns detected in the evaluation window.",
+            recommendation="Continue monitoring. Conduct a formal internal ISMS audit per clause 9.2 and review the SoA annually.",
         ))
 
     score = max(0, min(100, score))
@@ -412,12 +453,22 @@ async def _llm_report(stats: dict) -> ISO27001EvaluationReport:
 # ── API endpoints ─────────────────────────────────────────────────────────────
 
 @iso27001_router.post("/evaluate", response_model=ISO27001EvaluationReport)
-async def evaluate_iso27001(hours: int = Query(default=24, ge=1, le=168)):
+async def evaluate_iso27001(
+    hours: int = Query(default=24, ge=1, le=168),
+    since: Optional[str] = Query(default=None),
+):
     """
     Evaluate ISO 27001 ISMS compliance by analysing activity logs for the given window.
-    Uses Ollama when available; falls back to rule-based report automatically.
+    Pass `since` as a local ISO timestamp to anchor the cutoff to the client's
+    timezone; otherwise falls back to a rolling `hours` window in UTC.
     """
-    stats = await _gather_stats(hours)
+    cutoff = None
+    if since:
+        try:
+            cutoff = datetime.fromisoformat(since.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    stats = await _gather_stats(hours, cutoff=cutoff)
     logger.info("ISO 27001 evaluation requested — %d events in last %dh", stats["total_events"], hours)
 
     if _llm_available and _ollama is not None:

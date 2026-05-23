@@ -10,7 +10,7 @@ report if the LLM is unavailable.
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
@@ -68,8 +68,10 @@ class POPIAEvaluationReport(BaseModel):
 
 # ── Stats collection ──────────────────────────────────────────────────────────
 
-async def _gather_stats(hours: int) -> dict:
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+async def _gather_stats(hours: int, cutoff: Optional[datetime] = None) -> dict:
+    if cutoff is None:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    hours = max(1, round((datetime.now(timezone.utc) - cutoff).total_seconds() / 3600))
 
     async with AsyncSessionLocal() as db:
         total_q = await db.execute(
@@ -206,109 +208,159 @@ def _rule_based_report(stats: dict) -> POPIAEvaluationReport:
     findings: List[POPIAFinding] = []
     score = 100
 
-    # Condition 7 / Section 19 — Security Safeguards: MFA adoption
+    # Condition 7 / Section 19 — MFA adoption
     mfa_rate = stats["mfa_adoption_rate_pct"]
     if mfa_rate < 50:
         findings.append(POPIAFinding(
-            condition="Condition 7 — Section 19",
-            title="Security Safeguards",
-            risk_level="HIGH",
+            condition="Condition 7 — Section 19", title="Security Safeguards", risk_level="HIGH",
             observation=f"Only {mfa_rate}% of users have MFA enabled ({stats['mfa_enabled_users']} of {stats['total_users']}). POPIA Section 19 requires appropriate technical safeguards.",
             recommendation="Enforce MFA for all roles that process personal information. Update role security settings and notify affected users.",
         ))
         score -= 20
     elif mfa_rate < 80:
         findings.append(POPIAFinding(
-            condition="Condition 7 — Section 19",
-            title="Security Safeguards",
-            risk_level="MEDIUM",
+            condition="Condition 7 — Section 19", title="Security Safeguards", risk_level="MEDIUM",
             observation=f"MFA adoption is {mfa_rate}% — {stats['total_users'] - stats['mfa_enabled_users']} user(s) lack two-factor authentication.",
             recommendation="Progressively enforce MFA across all roles. POPIA requires reasonable measures to prevent unauthorised access.",
         ))
         score -= 10
-
-    # Condition 7 / Section 19 — Failed logins / brute force
-    if stats["failed_logins"] > 20:
-        level = "HIGH" if stats["failed_logins"] > 50 else "MEDIUM"
+    elif mfa_rate < 100:
         findings.append(POPIAFinding(
-            condition="Condition 7 — Section 19",
-            title="Security Safeguards — Unauthorised Access Attempts",
-            risk_level=level,
-            observation=f"{stats['failed_logins']} failed login attempts in {stats['window_hours']}h (failure rate {stats['login_failure_rate_pct']}%). This indicates possible unauthorised access attempts.",
-            recommendation="Review failed login patterns. Ensure account lockout is active, alerts are configured, and incidents are reported to the Information Regulator if a compromise occurred (Section 22).",
+            condition="Condition 7 — Section 19", title="Security Safeguards", risk_level="LOW",
+            observation=f"MFA adoption is {mfa_rate}% — {stats['total_users'] - stats['mfa_enabled_users']} user(s) still without two-factor authentication.",
+            recommendation="Complete MFA rollout. Section 19 requires all operators of personal information to be appropriately protected.",
         ))
-        score -= 15 if level == "HIGH" else 8
 
-    # Condition 7 / Section 22 — Auto-lockouts (security compromise indicators)
+    # Condition 7 / Section 19 — Failed logins (any count reported)
+    if stats["failed_logins"] > 0:
+        fl = stats["failed_logins"]
+        if fl > 50:   level, deduction = "HIGH", 15
+        elif fl > 20: level, deduction = "MEDIUM", 8
+        elif fl > 5:  level, deduction = "MEDIUM", 5
+        else:         level, deduction = "LOW", 0
+        findings.append(POPIAFinding(
+            condition="Condition 7 — Section 19", title="Security Safeguards — Unauthorised Access Attempts", risk_level=level,
+            observation=f"{fl} failed login attempt(s) in {stats['window_hours']}h (failure rate: {stats['login_failure_rate_pct']}%). {'Elevated — possible unauthorised access attempt.' if fl > 5 else 'Low-level failures recorded — monitor for escalation.'}",
+            recommendation="Review failed login patterns. Ensure account lockout is active and incidents are reported to the Information Regulator if a compromise occurred (Section 22).",
+        ))
+        score -= deduction
+
+    # Condition 7 / Section 22 — Auto-lockouts
     if stats["auto_lockouts"] > 0:
         findings.append(POPIAFinding(
-            condition="Condition 7 — Section 22",
-            title="Notification of Security Compromises",
-            risk_level="MEDIUM",
-            observation=f"{stats['auto_lockouts']} account(s) were locked out due to repeated failed logins — a potential security compromise indicator.",
-            recommendation="Investigate locked accounts. If personal information was accessed unauthorised, notify the Information Regulator and affected data subjects within the required timeframe (Section 22).",
+            condition="Condition 7 — Section 22", title="Notification of Security Compromises", risk_level="MEDIUM",
+            observation=f"{stats['auto_lockouts']} account(s) locked out due to repeated failed logins — a potential security compromise indicator.",
+            recommendation="Investigate locked accounts. If personal information was accessed without authorisation, notify the Information Regulator and affected data subjects (Section 22).",
         ))
         score -= 5
 
-    # Condition 8 / Section 23 — Data subject participation: user deletions
+    # Condition 8 / Section 23 — User deletions
     if stats["user_deletions"] > 0:
         findings.append(POPIAFinding(
-            condition="Condition 8 — Section 23",
-            title="Data Subject Participation — Right to Erasure",
-            risk_level="LOW",
+            condition="Condition 8 — Section 23", title="Data Subject Participation — Right to Erasure", risk_level="LOW",
             observation=f"{stats['user_deletions']} user deletion(s) recorded. POPIA grants data subjects the right to request destruction of personal information.",
-            recommendation="Confirm that deleted users' personal information is fully purged from all databases, backups, and logs. Document the erasure for accountability (Condition 1 — Section 8).",
+            recommendation="Confirm deleted users' personal information is fully purged from all databases, backups, and logs. Document the erasure for accountability (Condition 1 — Section 8).",
         ))
 
-    # Condition 1 / Section 8 — Accountability: no audit events
+    # Condition 2 / Section 9 — Permission changes (any count reported)
+    if stats["permission_updates"] > 0:
+        pu = stats["permission_updates"]
+        if pu > 10:   level, deduction = "MEDIUM", 8
+        elif pu > 3:  level, deduction = "LOW", 0
+        else:         level, deduction = "LOW", 0
+        findings.append(POPIAFinding(
+            condition="Condition 2 — Section 9", title="Processing Limitation — Minimality", risk_level=level,
+            observation=f"{pu} permission update(s) in {stats['window_hours']}h. {'Frequent changes may indicate poorly managed processing scope.' if pu > 10 else 'Access changes recorded — verify each is minimally scoped.'}",
+            recommendation="Implement a formal access review process. POPIA Section 9 requires personal information to be processed in a minimal and lawful manner.",
+        ))
+        score -= deduction
+
+    # Condition 3 / Section 13 — Role changes (any count reported)
+    if stats["role_changes"] > 0:
+        rc = stats["role_changes"]
+        level = "MEDIUM" if rc > 5 else "LOW"
+        findings.append(POPIAFinding(
+            condition="Condition 3 — Section 13", title="Purpose Specification — Role Assignment", risk_level=level,
+            observation=f"{rc} role assignment/removal event(s) in {stats['window_hours']}h. Each role change affects access to personal information.",
+            recommendation="Document the purpose justification for each role change. POPIA requires access to personal information only for a specific, explicitly defined purpose.",
+        ))
+        if level == "MEDIUM": score -= 5
+
+    # Condition 8 / Section 23 — Status changes
+    if stats["status_changes"] > 0:
+        findings.append(POPIAFinding(
+            condition="Condition 8 — Section 23", title="Data Subject Participation — Account Status", risk_level="LOW",
+            observation=f"{stats['status_changes']} account status change(s) (suspension/activation) recorded.",
+            recommendation="Verify each status change was authorised. Suspended accounts must not retain access to personal information.",
+        ))
+
+    # Condition 7 / Section 19 — Session kills
+    if stats["session_kills"] > 0:
+        sk = stats["session_kills"]
+        level = "MEDIUM" if sk > 3 else "LOW"
+        findings.append(POPIAFinding(
+            condition="Condition 7 — Section 19", title="Security Safeguards — Session Management", risk_level=level,
+            observation=f"{sk} session termination(s) recorded in the last {stats['window_hours']}h. {'Elevated count may indicate a security incident requiring investigation.' if sk > 3 else 'Session kill(s) recorded — verify each was authorised.'}",
+            recommendation="Review all session termination events. Forced session kills can indicate compromised accounts. Log each event and assess whether the Information Regulator must be notified under Section 22.",
+        ))
+        if level == "MEDIUM": score -= 5
+
+    # Condition 7 / Section 19 — Password changes
+    if stats["password_changes"] > 0:
+        pc = stats["password_changes"]
+        if pc > 10:   level, deduction = "MEDIUM", 5
+        else:         level, deduction = "LOW", 0
+        findings.append(POPIAFinding(
+            condition="Condition 7 — Section 19", title="Security Safeguards — Password Management", risk_level=level,
+            observation=f"{pc} password change(s) recorded in the last {stats['window_hours']}h. {'High frequency may indicate a forced reset following a security event.' if pc > 10 else 'Password change(s) recorded — verify each was user-initiated or part of a scheduled policy rotation.'}",
+            recommendation="Ensure password changes comply with the organisation's password policy. If bulk resets were triggered by a suspected compromise, document and assess notification obligations under Section 22.",
+        ))
+        score -= deduction
+
+    # Condition 2 / Section 9 — User creations
+    if stats["user_creations"] > 0:
+        uc = stats["user_creations"]
+        if uc > 5:    level, deduction = "MEDIUM", 5
+        else:         level, deduction = "LOW", 0
+        findings.append(POPIAFinding(
+            condition="Condition 2 — Section 9", title="Processing Limitation — New Account Creation", risk_level=level,
+            observation=f"{uc} new user account(s) created in the last {stats['window_hours']}h. {'Bulk account creation may indicate an onboarding event or a provisioning anomaly.' if uc > 5 else 'New account(s) created — verify lawful purpose and consent for processing personal information.'}",
+            recommendation="Confirm each new account was created with a documented, lawful purpose. Collect only the minimum personal information necessary (Section 11 — minimality). Update the personal information register accordingly.",
+        ))
+        score -= deduction
+
+    # Condition 8 / Section 23 — Currently suspended users (snapshot)
+    if stats["suspended_users"] > 0:
+        findings.append(POPIAFinding(
+            condition="Condition 8 — Section 23", title="Data Subject Participation — Suspended Accounts", risk_level="LOW",
+            observation=f"{stats['suspended_users']} user account(s) currently suspended. Suspended accounts retain stored personal information which must still be protected.",
+            recommendation="Review all suspended accounts. If suspension is permanent, initiate erasure of personal information per the right to deletion. Document the retention justification for temporarily suspended accounts.",
+        ))
+
+    # Condition 7 / Section 19 — Multiple source IPs
+    if stats["unique_source_ips"] > 5:
+        ui = stats["unique_source_ips"]
+        level = "MEDIUM" if ui > 10 else "LOW"
+        findings.append(POPIAFinding(
+            condition="Condition 7 — Section 19", title="Security Safeguards — Access Origin", risk_level=level,
+            observation=f"System activity originated from {ui} distinct IP address(es) in the window.",
+            recommendation="Verify all source IPs are expected. Enable geo-restriction for roles that process sensitive personal information.",
+        ))
+        if level == "MEDIUM": score -= 5
+
+    # Condition 1 / Section 8 — No audit events = logging inactive
     if stats["total_events"] == 0:
         findings.append(POPIAFinding(
-            condition="Condition 1 — Section 8",
-            title="Accountability — Audit Trail",
-            risk_level="HIGH",
+            condition="Condition 1 — Section 8", title="Accountability — Audit Trail", risk_level="HIGH",
             observation="No activity events recorded in the evaluation window. The audit logging system may be inactive.",
-            recommendation="Restore and verify audit logging immediately. Section 8 requires the responsible party to give effect to POPIA conditions and document compliance.",
+            recommendation="Restore and verify audit logging immediately. Section 8 requires the responsible party to document compliance with all POPIA conditions.",
         ))
         score -= 25
 
-    # Condition 2 / Section 9 — Processing Limitation: excessive permission changes
-    if stats["permission_updates"] > 10:
-        findings.append(POPIAFinding(
-            condition="Condition 2 — Section 9",
-            title="Processing Limitation — Minimality",
-            risk_level="MEDIUM",
-            observation=f"{stats['permission_updates']} permission updates in {stats['window_hours']}h. Frequent access changes may indicate poorly managed processing scope.",
-            recommendation="Implement a formal access review process. POPIA Section 9 requires that personal information is processed in a minimal and lawful manner.",
-        ))
-        score -= 8
-
-    # Condition 7 / Section 19 — Multiple source IPs (access from unexpected locations)
-    if stats["unique_source_ips"] > 10:
-        findings.append(POPIAFinding(
-            condition="Condition 7 — Section 19",
-            title="Security Safeguards — Access Origin",
-            risk_level="MEDIUM",
-            observation=f"System activity originated from {stats['unique_source_ips']} distinct IP addresses in the window.",
-            recommendation="Verify all source IPs are expected. Enable geo-restriction for roles that process sensitive personal information.",
-        ))
-        score -= 5
-
-    # Condition 3 / Section 13 — Purpose Specification: role changes
-    if stats["role_changes"] > 5:
-        findings.append(POPIAFinding(
-            condition="Condition 3 — Section 13",
-            title="Purpose Specification — Role Assignment",
-            risk_level="LOW",
-            observation=f"{stats['role_changes']} role assignment/removal event(s) recorded. Ensure each role change aligns with the stated purpose of personal data processing.",
-            recommendation="Document the purpose justification for each role change. POPIA requires that access to personal information is granted only for a specific, explicitly defined purpose.",
-        ))
-
     if not findings:
         findings.append(POPIAFinding(
-            condition="All Conditions",
-            title="General Compliance Status",
-            risk_level="LOW",
-            observation="No significant POPIA violations detected in the evaluation window.",
+            condition="All Conditions", title="General Compliance Status", risk_level="LOW",
+            observation="No POPIA concerns detected in the evaluation window.",
             recommendation="Continue monitoring. Conduct a quarterly POPIA compliance review and update your PAIA manual if required.",
         ))
 
@@ -399,12 +451,22 @@ async def _llm_report(stats: dict) -> POPIAEvaluationReport:
 # ── API endpoints ─────────────────────────────────────────────────────────────
 
 @popia_router.post("/evaluate", response_model=POPIAEvaluationReport)
-async def evaluate_popia(hours: int = Query(default=24, ge=1, le=168)):
+async def evaluate_popia(
+    hours: int = Query(default=24, ge=1, le=168),
+    since: Optional[str] = Query(default=None),
+):
     """
     Evaluate POPIA compliance by analysing activity logs for the given window.
-    Uses Ollama when available; falls back to rule-based report automatically.
+    Pass `since` as a local ISO timestamp to anchor the cutoff to the client's
+    timezone; otherwise falls back to a rolling `hours` window in UTC.
     """
-    stats = await _gather_stats(hours)
+    cutoff = None
+    if since:
+        try:
+            cutoff = datetime.fromisoformat(since.replace('Z', '+00:00'))
+        except ValueError:
+            pass
+    stats = await _gather_stats(hours, cutoff=cutoff)
     logger.info("POPIA evaluation requested — %d events in last %dh", stats["total_events"], hours)
 
     if _llm_available and _ollama is not None:

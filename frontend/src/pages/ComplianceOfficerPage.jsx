@@ -125,15 +125,28 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     return Math.max(1, now.getHours() + Math.ceil(now.getMinutes() / 60))
   }
 
-  // value 0 = "Today" sentinel — resolve to hours elapsed since local midnight
-  const resolveWindow = (w) => w === 0 ? todayHours() : w
+  // Returns the local ISO timestamp for the start of the selected window.
+  // value 0 = "Today" → local midnight; otherwise → now minus N hours.
+  // Sending the absolute timestamp means the backend never needs to guess timezone.
+  const getSince = (windowValue) => {
+    const now = new Date()
+    if (windowValue === 0) {
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+    }
+    return new Date(now.getTime() - windowValue * 60 * 60 * 1000).toISOString()
+  }
+
+  const localMidnight = () => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+  }
 
   // Auto-fetch GDPR overview data for the current day on mount
   useEffect(() => {
     const fetchTodayGdpr = async () => {
       setGdprOverviewLoading(true)
       try {
-        const res = await fetch(`/api/v1/gdpr/evaluate?hours=${todayHours()}`, { method: 'POST' })
+        const res = await fetch(`/api/v1/gdpr/evaluate?since=${encodeURIComponent(localMidnight())}`, { method: 'POST' })
         if (res.ok) setGdprOverview(await res.json())
       } catch {}
       finally { setGdprOverviewLoading(false) }
@@ -146,7 +159,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     const fetchTodayPopia = async () => {
       setPopiaOverviewLoading(true)
       try {
-        const res = await fetch(`/api/v1/popia/evaluate?hours=${todayHours()}`, { method: 'POST' })
+        const res = await fetch(`/api/v1/popia/evaluate?since=${encodeURIComponent(localMidnight())}`, { method: 'POST' })
         if (res.ok) setPopiaOverview(await res.json())
       } catch {}
       finally { setPopiaOverviewLoading(false) }
@@ -158,7 +171,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     setGdprLoading(true)
     setGdprError('')
     try {
-      const res = await fetch(`/api/v1/gdpr/evaluate?hours=${resolveWindow(gdprWindow)}`, { method: 'POST' })
+      const res = await fetch(`/api/v1/gdpr/evaluate?since=${encodeURIComponent(getSince(gdprWindow))}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `HTTP ${res.status}`)
@@ -183,7 +196,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     setPopiaLoading(true)
     setPopiaError('')
     try {
-      const res = await fetch(`/api/v1/popia/evaluate?hours=${resolveWindow(popiaWindow)}`, { method: 'POST' })
+      const res = await fetch(`/api/v1/popia/evaluate?since=${encodeURIComponent(getSince(popiaWindow))}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `HTTP ${res.status}`)
@@ -209,7 +222,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     const fetchTodayIso = async () => {
       setIsoOverviewLoading(true)
       try {
-        const res = await fetch(`/api/v1/iso27001/evaluate?hours=${todayHours()}`, { method: 'POST' })
+        const res = await fetch(`/api/v1/iso27001/evaluate?since=${encodeURIComponent(localMidnight())}`, { method: 'POST' })
         if (res.ok) setIsoOverview(await res.json())
       } catch {}
       finally { setIsoOverviewLoading(false) }
@@ -221,7 +234,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     setIsoLoading(true)
     setIsoError('')
     try {
-      const res = await fetch(`/api/v1/iso27001/evaluate?hours=${resolveWindow(isoWindow)}`, { method: 'POST' })
+      const res = await fetch(`/api/v1/iso27001/evaluate?since=${encodeURIComponent(getSince(isoWindow))}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `HTTP ${res.status}`)
