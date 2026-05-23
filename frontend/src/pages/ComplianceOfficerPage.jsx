@@ -381,6 +381,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
               const score = overviewData ? overviewData.overall_score : null
               const findings = overviewData ? overviewData.findings ?? [] : null
               const openFindings = findings !== null ? findings.length : null
+              const highCount = findings !== null ? findings.filter(f => f.risk_level === 'HIGH').length : null
               const criticalCount = findings !== null ? findings.filter(f => f.risk_level === 'CRITICAL').length : null
 
               return (
@@ -405,7 +406,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
                           <line x1="12" y1="16" x2="12.01" y2="16" />
                         </svg>
                         <span style={{ color: '#ef4444', fontWeight: '600', fontSize: '13px' }}>
-                          {loading ? '…' : criticalCount !== null ? `${criticalCount} critical` : '— critical'}
+                          {loading ? '…' : `${highCount} high, ${criticalCount} critical`}
                         </span>
                       </span>
                     )}
