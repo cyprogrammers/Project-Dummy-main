@@ -1,16 +1,10 @@
-"""
-backend/rbac/router.py
-======================
-All RBAC endpoints mounted under  /api/v1/rbac/
-Includes: auth login/logout/refresh/MFA, users CRUD, roles CRUD,
-          permissions matrix, role settings, sessions, activity trail.
-"""
+
 import asyncio
 import math
 from typing import Any, Dict, List, Optional
 
 import pyotp
-from services.email_service import send_mfa_code, send_welcome_email
+from services.email_service import send_mfa_code, send_welcome_email, sendEmail
 from services.otp_store import otp_store
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status

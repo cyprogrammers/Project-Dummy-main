@@ -1,10 +1,3 @@
-"""
-backend/services/email_service.py
-==================================
-Centralised email delivery for AITRMS.
-Covers: MFA code delivery, welcome emails for new users.
-Uses Gmail SMTP with an App Password (no OAuth required).
-"""
 import smtplib
 import logging
 from email.mime.text import MIMEText
