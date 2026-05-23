@@ -68,7 +68,7 @@ const NAV_ITEMS = [
 
 const FRAMEWORKS = [
   { id: 'gdpr',     label: 'GDPR',      color: '#7c3aed', trackColor: '#ede9fe', hasCritical: true  },
-  { id: 'popia',    label: 'POPIA',     color: '#16a34a', trackColor: '#dcfce7', hasCritical: false },
+  { id: 'popia',    label: 'POPIA',     color: '#16a34a', trackColor: '#dcfce7', hasCritical: true  },
   { id: 'iso27001', label: 'ISO 27001', color: '#d97706', trackColor: '#fef3c7', hasCritical: true  },
 ]
 
