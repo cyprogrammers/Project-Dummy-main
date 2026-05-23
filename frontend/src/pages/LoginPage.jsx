@@ -6,7 +6,7 @@
  * Supports: normal login, MFA second-factor step, locked-account messages.
  */
 import { useState, useEffect } from 'react'
-import logo from '../components/images/cut-logo.jpg'
+import logo from '../components/images/Logo-ARM.png'
 import { login } from '../services/authService'
 
 export default function LoginPage({ onLogin }) {
