@@ -28,8 +28,8 @@ export default function LoginPage({ onLogin }) {
 
   useEffect(() => {
     const now = new Date()
-    const hours = Math.max(1, now.getHours() + Math.ceil(now.getMinutes() / 60))
-    fetch(`/api/v1/popia/evaluate?hours=${hours}`, { method: 'POST' })
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+    fetch(`/api/v1/popia/evaluate?since=${encodeURIComponent(midnight)}`, { method: 'POST' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.overall_score != null) setPopiaScore(`${d.overall_score}%`) })
       .catch(() => {})
