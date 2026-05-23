@@ -80,9 +80,10 @@ const RISK_STYLE = {
 }
 
 const WINDOW_OPTIONS = [
-  { label: 'Last 24 hours', value: 24 },
-  { label: 'Last 48 hours', value: 48 },
-  { label: 'Last 7 days',   value: 168 },
+  { label: 'Today (current date)', value: 0   },
+  { label: 'Last 24 hours',        value: 24  },
+  { label: 'Last 48 hours',        value: 48  },
+  { label: 'Last 7 days',          value: 168 },
 ]
 
 export default function ComplianceOfficerPage({ onLogout, currentUser }) {
@@ -93,7 +94,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
   const [gdprReport, setGdprReport]         = useState(null)
   const [gdprLoading, setGdprLoading]       = useState(false)
   const [gdprError, setGdprError]           = useState('')
-  const [gdprWindow, setGdprWindow]         = useState(24)
+  const [gdprWindow, setGdprWindow]         = useState(0)
   const [gdprLlmStatus, setGdprLlmStatus]   = useState(null)
   const [gdprOverview, setGdprOverview]     = useState(null)
   const [gdprOverviewLoading, setGdprOverviewLoading] = useState(false)
@@ -102,7 +103,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
   const [popiaReport, setPopiaReport]         = useState(null)
   const [popiaLoading, setPopiaLoading]       = useState(false)
   const [popiaError, setPopiaError]           = useState('')
-  const [popiaWindow, setPopiaWindow]         = useState(24)
+  const [popiaWindow, setPopiaWindow]         = useState(0)
   const [popiaLlmStatus, setPopiaLlmStatus]   = useState(null)
   const [popiaOverview, setPopiaOverview]     = useState(null)
   const [popiaOverviewLoading, setPopiaOverviewLoading] = useState(false)
@@ -111,7 +112,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
   const [isoReport, setIsoReport]         = useState(null)
   const [isoLoading, setIsoLoading]       = useState(false)
   const [isoError, setIsoError]           = useState('')
-  const [isoWindow, setIsoWindow]         = useState(24)
+  const [isoWindow, setIsoWindow]         = useState(0)
   const [isoLlmStatus, setIsoLlmStatus]   = useState(null)
   const [isoOverview, setIsoOverview]     = useState(null)
   const [isoOverviewLoading, setIsoOverviewLoading] = useState(false)
@@ -123,6 +124,9 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     const now = new Date()
     return Math.max(1, now.getHours() + Math.ceil(now.getMinutes() / 60))
   }
+
+  // value 0 = "Today" sentinel — resolve to hours elapsed since local midnight
+  const resolveWindow = (w) => w === 0 ? todayHours() : w
 
   // Auto-fetch GDPR overview data for the current day on mount
   useEffect(() => {
@@ -154,7 +158,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     setGdprLoading(true)
     setGdprError('')
     try {
-      const res = await fetch(`/api/v1/gdpr/evaluate?hours=${gdprWindow}`, { method: 'POST' })
+      const res = await fetch(`/api/v1/gdpr/evaluate?hours=${resolveWindow(gdprWindow)}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `HTTP ${res.status}`)
@@ -179,7 +183,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     setPopiaLoading(true)
     setPopiaError('')
     try {
-      const res = await fetch(`/api/v1/popia/evaluate?hours=${popiaWindow}`, { method: 'POST' })
+      const res = await fetch(`/api/v1/popia/evaluate?hours=${resolveWindow(popiaWindow)}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `HTTP ${res.status}`)
@@ -217,7 +221,7 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
     setIsoLoading(true)
     setIsoError('')
     try {
-      const res = await fetch(`/api/v1/iso27001/evaluate?hours=${isoWindow}`, { method: 'POST' })
+      const res = await fetch(`/api/v1/iso27001/evaluate?hours=${resolveWindow(isoWindow)}`, { method: 'POST' })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.detail || `HTTP ${res.status}`)
