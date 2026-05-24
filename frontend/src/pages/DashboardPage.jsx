@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { users as usersAPI, roles as rolesAPI, activity as activityAPI, dashboard as dashboardAPI } from '../services/authService'
 import BackupManagementTab from '../components/BackupManagementTab'
+import TaskManagementPanel from '../components/TaskManagementPanel';
 
 const NAV_ITEMS = [
   {
@@ -43,6 +44,17 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+  id: 'tasks',
+  label: 'TASK MANAGEMENT',
+  icon: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4"/>
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+    </svg>
+  ),
+}
 ]
 
 function RoleProfileView({ role, onBack, dm, styles }) {
@@ -1814,10 +1826,20 @@ export default function DashboardPage({ onLogout, currentUser }) {
           </div>
         </>}
 
+        {/* ── TASK MANAGEMENT PAGE ── */}
+{activePage === 'tasks' && (
+  <TaskManagementPanel
+    darkMode={darkMode}
+    currentUser={currentUser}
+  />
+)}
+
         <div style={{ minHeight: '32px', flexShrink: 0 }} />
       </main>
     </div>
   )
+
+  
 }
 
 const makeStyles = (dm) => ({

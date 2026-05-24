@@ -32,6 +32,7 @@ from auth.keycloak import get_telemetry_ingest_roles
 from connectors.elk_ingestor import poll_elasticsearch
 import asyncio
 from backup.backup_engine import backup_router
+from tasks.task_engine import task_router
 from core.gdpr_evaluator import gdpr_router
 from core.popia_evaluator import popia_router
 from core.iso27001_evaluator import iso27001_router
@@ -57,7 +58,7 @@ app.include_router(backup_router)
 app.include_router(gdpr_router)
 app.include_router(popia_router)
 app.include_router(iso27001_router)
-
+app.include_router(task_router)
 # Setup Templates and Static Files
 templates = Jinja2Templates(directory="templates")
 # app.mount("/static", StaticFiles(directory="static"), name="static")
