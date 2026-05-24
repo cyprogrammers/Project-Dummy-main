@@ -36,6 +36,7 @@ from tasks.task_engine import task_router
 from core.gdpr_evaluator import gdpr_router
 from core.popia_evaluator import popia_router
 from core.iso27001_evaluator import iso27001_router
+from core.controls_effectiveness import controls_router
 
 
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +59,7 @@ app.include_router(backup_router)
 app.include_router(gdpr_router)
 app.include_router(popia_router)
 app.include_router(iso27001_router)
+app.include_router(controls_router)
 app.include_router(task_router)
 # Setup Templates and Static Files
 templates = Jinja2Templates(directory="templates")

@@ -69,6 +69,10 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [appliedFrom, setAppliedFrom] = useState('')
   const [appliedTo, setAppliedTo] = useState('')
 
+  const [controlsData, setControlsData] = useState(null)
+  const [controlsLoading, setControlsLoading] = useState(false)
+  const [controlsError, setControlsError] = useState('')
+
   const isFetchingRef = useRef(false)
 
   useEffect(() => {
@@ -110,6 +114,29 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
     const interval = setInterval(() => fetchLogs(false), 5000)
     return () => { active = false; clearInterval(interval) }
   }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const fetchControls = async (showSpinner = false) => {
+      if (showSpinner) setControlsLoading(true)
+      try {
+        const res = await fetch('/api/v1/controls/effectiveness')
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (active) { setControlsData(data); setControlsError('') }
+      } catch (err) {
+        if (active) setControlsError(err.message || 'Failed to load control metrics')
+      } finally {
+        if (active) setControlsLoading(false)
+      }
+    }
+
+    fetchControls(true)
+    const interval = setInterval(() => fetchControls(false), 30000)
+    return () => { active = false; clearInterval(interval) }
+  }, [])
+
   const dm = darkMode
   const styles = makeStyles(dm)
   const header = PAGE_HEADERS[activePage]
@@ -430,7 +457,156 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                 </tbody>
               </table>
             </div>
-          ) : (
+          ) : activePage === 'control-effectiveness' ? (() => {
+            const metrics = controlsData?.controls ?? []
+            const passingCount  = metrics.filter(c => c.status === 'Passing').length
+            const degradedCount = metrics.filter(c => c.status === 'Degraded').length
+            const failingCount  = metrics.filter(c => c.status === 'Failing').length
+            const avgEff = metrics.length > 0
+              ? Math.round(metrics.reduce((s, c) => s + c.effectiveness, 0) / metrics.length)
+              : 0
+
+            const statusSty = (s) =>
+              s === 'Passing'  ? { bg: '#d1fae5', color: '#065f46', border: '#10b981' } :
+              s === 'Degraded' ? { bg: '#fef3c7', color: '#92400e', border: '#f59e0b' } :
+                                 { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' }
+
+            const effColor = (pct) => pct >= 85 ? '#16a34a' : pct >= 65 ? '#d97706' : '#dc2626'
+
+            if (controlsLoading && !controlsData) {
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', padding: '60px 0', textAlign: 'center' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1.2s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: dm ? '#94a3b8' : '#6b7280' }}>Loading live control metrics…</div>
+                  <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                </div>
+              )
+            }
+
+            if (controlsError && !controlsData) {
+              return (
+                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '10px', padding: '16px 20px', fontSize: '13px', color: '#dc2626', fontWeight: '600' }}>
+                  Failed to load control metrics: {controlsError}
+                </div>
+              )
+            }
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Framework scores strip */}
+                {controlsData && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                    {[
+                      { label: 'GDPR SCORE',     value: controlsData.gdpr_score,  color: '#7c3aed' },
+                      { label: 'POPIA SCORE',    value: controlsData.popia_score, color: '#16a34a' },
+                      { label: 'ISO 27001 SCORE',value: controlsData.iso_score,   color: '#d97706' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} style={{ background: dm ? '#0f172a' : '#f8fafc', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '4px' }}>{label}</div>
+                          <div style={{ fontSize: '26px', fontWeight: '800', color, lineHeight: '1' }}>{value}<span style={{ fontSize: '14px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af' }}>/100</span></div>
+                        </div>
+                        <div style={{ flex: 1, height: '8px', borderRadius: '999px', background: dm ? '#1e293b' : '#e5e7eb', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${value}%`, borderRadius: '999px', background: color, transition: 'width 0.6s ease' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Summary strip */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  {[
+                    { label: 'TOTAL CONTROLS', value: metrics.length || 12, color: dm ? '#f1f5f9' : '#111827' },
+                    { label: 'PASSING',         value: passingCount,         color: '#16a34a' },
+                    { label: 'DEGRADED',        value: degradedCount,        color: '#d97706' },
+                    { label: 'FAILING',         value: failingCount,         color: '#dc2626' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ background: dm ? '#0f172a' : '#f8fafc', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '12px', padding: '14px 18px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '6px' }}>{label}</div>
+                      <div style={{ fontSize: '28px', fontWeight: '800', color, lineHeight: '1' }}>{controlsLoading ? '…' : value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Avg effectiveness bar */}
+                <div style={{ background: dm ? '#0f172a' : '#f8fafc', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.6px', whiteSpace: 'nowrap' }}>AVG EFFECTIVENESS</span>
+                  <div style={{ flex: 1, height: '10px', borderRadius: '999px', background: dm ? '#1e293b' : '#e5e7eb', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${avgEff}%`, borderRadius: '999px', background: effColor(avgEff), transition: 'width 0.6s ease' }} />
+                  </div>
+                  <span style={{ fontSize: '16px', fontWeight: '800', color: effColor(avgEff), minWidth: '44px', textAlign: 'right' }}>
+                    {controlsLoading ? '…' : `${avgEff}%`}
+                  </span>
+                  {controlsData && (
+                    <span style={{ fontSize: '11px', color: dm ? '#475569' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                      Updated {new Date(controlsData.assessed_at).toLocaleTimeString()} · {controlsData.window_hours}h window
+                    </span>
+                  )}
+                </div>
+
+                {/* Table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        {['Control ID', 'Control Name', 'Domain', 'Framework', 'Effectiveness', 'Status', 'Last Assessed'].map(h => (
+                          <th key={h} style={styles.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metrics.map((c, i, arr) => {
+                        const ss = statusSty(c.status)
+                        const ec = effColor(c.effectiveness)
+                        return (
+                          <tr key={c.id}
+                            style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none', transition: 'background 0.15s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = dm ? '#0f172a' : '#f8fafc'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '700', color: dm ? '#94a3b8' : '#374151', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                              {c.id}
+                            </td>
+                            <td style={{ ...styles.td, fontWeight: '600', color: dm ? '#f1f5f9' : '#111827', whiteSpace: 'nowrap' }}>
+                              {c.name}
+                            </td>
+                            <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>
+                              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', background: dm ? '#1e3a5f' : '#eff6ff', color: dm ? '#93c5fd' : '#1d4ed8', border: `1px solid ${dm ? '#1d4ed8' : '#bfdbfe'}` }}>
+                                {c.domain}
+                              </span>
+                            </td>
+                            <td style={{ ...styles.td, fontSize: '12px', color: dm ? '#64748b' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                              {c.framework}
+                            </td>
+                            <td style={{ ...styles.td, minWidth: '140px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ flex: 1, height: '7px', borderRadius: '999px', background: dm ? '#334155' : '#e5e7eb', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${c.effectiveness}%`, borderRadius: '999px', background: ec, transition: 'width 0.6s ease' }} />
+                                </div>
+                                <span style={{ fontSize: '13px', fontWeight: '700', color: ec, minWidth: '36px', textAlign: 'right' }}>{c.effectiveness}%</span>
+                              </div>
+                            </td>
+                            <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>
+                              <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: ss.bg, color: ss.color, border: `1px solid ${ss.border}` }}>
+                                {c.status}
+                              </span>
+                            </td>
+                            <td style={{ ...styles.tdTimestamp, whiteSpace: 'nowrap' }}>
+                              {c.last_assessed}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+              </div>
+            )
+          })() : (
             <div style={styles.alertList}>
               {PLACEHOLDER_ROWS.map((item, index) => (
                 <div key={item} style={{ ...styles.alertRow, borderBottom: index < PLACEHOLDER_ROWS.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>

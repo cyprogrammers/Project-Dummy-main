@@ -41,17 +41,6 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'findings',
-    label: 'OPEN FINDINGS',
-    icon: (
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </svg>
-    ),
-  },
-  {
     id: 'policies',
     label: 'POLICY RULES',
     icon: (
@@ -332,7 +321,6 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
                 : activePage === 'gdpr'      ? 'GDPR AI Evaluation'
                 : activePage === 'popia'     ? 'POPIA AI Evaluation'
                 : activePage === 'iso27001'  ? 'ISO 27001 AI Evaluation'
-                : activePage === 'findings'  ? 'Open Compliance Findings'
                 : 'Policy Rule Engine'}
             </h1>
             <p style={styles.pageSubtitle}>
@@ -344,8 +332,6 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
                 ? 'AI-powered POPIA (Act 4 of 2013) compliance analysis of system activity logs using Ollama'
                 : activePage === 'iso27001'
                 ? 'AI-powered ISO/IEC 27001:2022 ISMS compliance analysis of system activity logs using Ollama'
-                : activePage === 'findings'
-                ? 'Remediation Tracker — Sorted by Due Date'
                 : 'Machine-Executable Compliance Policies'}
             </p>
           </div>
@@ -1051,29 +1037,201 @@ export default function ComplianceOfficerPage({ onLogout, currentUser }) {
           </div>
         )}
 
-        {/* ── OPEN FINDINGS ── */}
-        {activePage === 'findings' && (
-          <div style={styles.chartCard}>
-            <div style={{ fontSize: '12px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '4px' }}>
-              — ACTIVE FINDINGS
-            </div>
-            <div style={{ padding: '24px 0', color: dm ? '#94a3b8' : '#6b7280', fontSize: '14px' }}>
-              No findings to display. Finding data will appear here once the system is operational.
-            </div>
-          </div>
-        )}
-
         {/* ── POLICY RULES ── */}
-        {activePage === 'policies' && (
-          <div style={styles.chartCard}>
-            <div style={{ fontSize: '12px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '16px' }}>
-              ACTIVE POLICY RULES
+        {activePage === 'policies' && (() => {
+          const POLICY_RULES = [
+            {
+              id: 'GDPR-001',
+              fw: 'gdpr',
+              name: 'Failed Login Threshold',
+              trigger: 'More than 5 failed login attempts per user within a 1-hour window',
+              action: 'Raise CRITICAL alert and lock account pending review',
+              severity: 'CRITICAL',
+              status: 'Active',
+            },
+            {
+              id: 'GDPR-002',
+              fw: 'gdpr',
+              name: 'Unaudited PII Access',
+              trigger: 'Personal data accessed without a corresponding audit trail entry',
+              action: 'Flag event as HIGH finding and notify Compliance Officer',
+              severity: 'HIGH',
+              status: 'Active',
+            },
+            {
+              id: 'GDPR-003',
+              fw: 'gdpr',
+              name: 'Breach Notification SLA',
+              trigger: 'Security incident not reported to supervisory authority within 72 hours (Art. 33)',
+              action: 'Escalate to CRITICAL and generate mandatory breach report',
+              severity: 'CRITICAL',
+              status: 'Active',
+            },
+            {
+              id: 'GDPR-004',
+              fw: 'gdpr',
+              name: 'Consent Record Verification',
+              trigger: 'User action on personal data with no matching consent log entry (Art. 7)',
+              action: 'Block operation and log MEDIUM compliance finding',
+              severity: 'MEDIUM',
+              status: 'Active',
+            },
+            {
+              id: 'POPIA-001',
+              fw: 'popia',
+              name: 'After-Hours PII Access',
+              trigger: 'Personal information accessed outside 06:00–18:00 SAST (Condition 7)',
+              action: 'Log MEDIUM finding and send alert to data protection officer',
+              severity: 'MEDIUM',
+              status: 'Active',
+            },
+            {
+              id: 'POPIA-002',
+              fw: 'popia',
+              name: 'Cross-Border Data Transfer',
+              trigger: 'Data transfer detected to a destination outside Zimbabwe (Condition 8)',
+              action: 'Flag as HIGH finding and require operator justification',
+              severity: 'HIGH',
+              status: 'Active',
+            },
+            {
+              id: 'POPIA-003',
+              fw: 'popia',
+              name: 'Data Minimisation Check',
+              trigger: 'API response returns fields beyond those necessary for the declared purpose (Condition 3)',
+              action: 'Log MEDIUM finding and trigger API response audit',
+              severity: 'MEDIUM',
+              status: 'Under Review',
+            },
+            {
+              id: 'POPIA-004',
+              fw: 'popia',
+              name: 'Retention Period Enforcement',
+              trigger: 'Records held beyond the defined retention period (Condition 5)',
+              action: 'Schedule automated purge and raise HIGH finding',
+              severity: 'HIGH',
+              status: 'Active',
+            },
+            {
+              id: 'ISO-001',
+              fw: 'iso',
+              name: 'Privileged Session Duration',
+              trigger: 'Administrator session remains active for more than 8 consecutive hours (A.9)',
+              action: 'Force session termination and log MEDIUM finding',
+              severity: 'MEDIUM',
+              status: 'Active',
+            },
+            {
+              id: 'ISO-002',
+              fw: 'iso',
+              name: 'Incident Logging Compliance',
+              trigger: 'Security incident not captured in the incident register within 72 hours (A.16)',
+              action: 'Raise CRITICAL finding and notify ISO lead',
+              severity: 'CRITICAL',
+              status: 'Active',
+            },
+            {
+              id: 'ISO-003',
+              fw: 'iso',
+              name: 'Unencrypted Data Transmission',
+              trigger: 'Sensitive data transmission detected without TLS/encryption (A.10)',
+              action: 'Block transmission and raise HIGH finding',
+              severity: 'HIGH',
+              status: 'Active',
+            },
+            {
+              id: 'ISO-004',
+              fw: 'iso',
+              name: 'Access Review Cadence',
+              trigger: 'Privileged account not subject to access review within 30 days (A.9)',
+              action: 'Suspend account access and raise MEDIUM finding',
+              severity: 'MEDIUM',
+              status: 'Under Review',
+            },
+          ]
+
+          const fwStyle   = { gdpr: styles.fwGdpr, popia: styles.fwPopia, iso: styles.fwIso }
+          const fwLabel   = { gdpr: 'GDPR', popia: 'POPIA', iso: 'ISO 27001' }
+
+          const sevStyle = (sev) => {
+            if (sev === 'CRITICAL') return styles.findingCritical
+            if (sev === 'HIGH')     return styles.findingHigh
+            if (sev === 'MEDIUM')   return styles.findingMedium
+            return { display: 'inline-block', padding: '4px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', border: '1px solid #6ee7b7', color: '#059669', background: dm ? 'transparent' : '#ecfdf5' }
+          }
+
+          const activeCount = POLICY_RULES.filter(r => r.status === 'Active').length
+          const reviewCount = POLICY_RULES.filter(r => r.status === 'Under Review').length
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Summary strip */}
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Total Rules',   value: POLICY_RULES.length, color: dm ? '#f1f5f9' : '#111827' },
+                  { label: 'Active',        value: activeCount,          color: '#16a34a' },
+                  { label: 'Under Review',  value: reviewCount,          color: '#ef4444' },
+                  { label: 'Frameworks',    value: 3,                    color: '#7c3aed' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ ...styles.frameworkCard, flex: '1', minWidth: '120px', padding: '18px 22px', gap: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px' }}>{label.toUpperCase()}</div>
+                    <div style={{ fontSize: '32px', fontWeight: '800', color, lineHeight: '1.1' }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Rules table */}
+              <div style={styles.chartCard}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '16px' }}>
+                  MACHINE-EXECUTABLE COMPLIANCE RULES — {POLICY_RULES.length} RULES LOADED
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        {['Rule ID', 'Framework', 'Rule Name', 'Trigger Condition', 'Action', 'Severity', 'Status'].map(h => (
+                          <th key={h} style={styles.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {POLICY_RULES.map((rule) => (
+                        <tr key={rule.id} style={{ transition: 'background 0.15s' }}
+                          onMouseEnter={e => e.currentTarget.style.background = dm ? '#0f172a' : '#f8fafc'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '700', color: dm ? '#94a3b8' : '#374151', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                            {rule.id}
+                          </td>
+                          <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>
+                            <span style={fwStyle[rule.fw]}>{fwLabel[rule.fw]}</span>
+                          </td>
+                          <td style={{ ...styles.td, fontWeight: '600', color: dm ? '#f1f5f9' : '#111827', whiteSpace: 'nowrap' }}>
+                            {rule.name}
+                          </td>
+                          <td style={{ ...styles.td, maxWidth: '300px', fontSize: '13px', lineHeight: '1.5' }}>
+                            {rule.trigger}
+                          </td>
+                          <td style={{ ...styles.td, maxWidth: '260px', fontSize: '13px', lineHeight: '1.5' }}>
+                            {rule.action}
+                          </td>
+                          <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>
+                            <span style={sevStyle(rule.severity)}>{rule.severity}</span>
+                          </td>
+                          <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>
+                            <span style={rule.status === 'Active' ? styles.policyActive : styles.policyReview}>
+                              {rule.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-            <div style={{ padding: '24px 0', color: dm ? '#94a3b8' : '#6b7280', fontSize: '14px' }}>
-              No policy rules to display. Policy data will appear here once the system is operational.
-            </div>
-          </div>
-        )}
+          )
+        })()}
 
         <div style={{ minHeight: '32px', flexShrink: 0 }} />
       </main>

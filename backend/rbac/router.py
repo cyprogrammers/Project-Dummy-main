@@ -127,7 +127,7 @@ class BulkUserPermUpdate(BaseModel):
 
 class SettingsUpdate(BaseModel):
     require_mfa: Optional[bool] = None
-    session_timeout_minutes: Optional[int] = Field(None, ge=5, le=1440)
+    session_timeout_minutes: Optional[int] = Field(None, ge=1, le=1440)
     max_failed_attempts: Optional[int] = Field(None, ge=1, le=20)
     pam_sessions_enabled: Optional[bool] = None
     restrict_working_hours: Optional[bool] = None

@@ -5,7 +5,7 @@
  * onLogin(role, user) now receives the full user object from the API.
  * onLogout calls the real API endpoint via authService.logout().
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import SecurityAnalystPage from './pages/SecurityAnalystPage'
@@ -18,6 +18,34 @@ function App() {
   const [userRole, setUserRole] = useState(null)
   const [currentUser, setCurrentUser] = useState(null)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [sessionExpired, setSessionExpired] = useState(false)
+  const inactivityTimer = useRef(null)
+
+  // Inactivity-based auto-logout: fires after the role's session timeout with no user events
+  useEffect(() => {
+    if (!userRole) return
+
+    const timeoutMs = parseInt(sessionStorage.getItem('rbac_session_timeout') || '3600', 10) * 1000
+
+    const resetTimer = () => {
+      clearTimeout(inactivityTimer.current)
+      inactivityTimer.current = setTimeout(async () => {
+        try { await apiLogout() } catch (_) {}
+        setUserRole(null)
+        setCurrentUser(null)
+        setSessionExpired(true)
+      }, timeoutMs)
+    }
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click']
+    events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }))
+    resetTimer()
+
+    return () => {
+      clearTimeout(inactivityTimer.current)
+      events.forEach(e => window.removeEventListener(e, resetTimer))
+    }
+  }, [userRole])
 
   // Check for existing session on mount
   useEffect(() => {
@@ -43,6 +71,7 @@ function App() {
   }, [])
 
   const handleLogin = (role, user) => {
+    setSessionExpired(false)
     setUserRole(role)
     setCurrentUser(user)
   }
@@ -65,7 +94,12 @@ function App() {
   }
 
   if (!userRole) {
-    return <LoginPage onLogin={handleLogin} />
+    return (
+      <LoginPage
+        onLogin={handleLogin}
+        sessionExpiredMessage={sessionExpired ? 'Your session expired due to inactivity. Please log in again.' : null}
+      />
+    )
   }
 
   const props = { onLogout: handleLogout, currentUser }
