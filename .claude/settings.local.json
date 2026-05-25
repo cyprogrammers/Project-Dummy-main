@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(netstat -ano)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:11434\" -TimeoutSec 3 -UseBasicParsing; $r.Content } catch { \"Ollama not reachable\" })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:8080\" -TimeoutSec 3 -UseBasicParsing; \"Keycloak reachable - HTTP $\\($r.StatusCode\\)\" } catch { \"Keycloak not reachable\" })",
+      "PowerShell(docker exec elasticsearch curl -s http://localhost:9200 2>&1)",
+      "PowerShell(& \"C:\\\\Users\\\\KupaDev23\\\\Desktop\\\\Project-Dummy-main\\\\backend\\\\venv\\\\Scripts\\\\python.exe\" -c \"import elasticsearch; print\\(elasticsearch.__version__\\)\")"
+    ]
+  }
+}
