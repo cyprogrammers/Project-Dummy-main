@@ -245,7 +245,6 @@ export default function LoginPage({ onLogin, sessionExpiredMessage }) {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
-              Protected by CUT SSO
             </span>
             <span style={styles.tlsBadge}>TLS 1.3</span>
             <span style={styles.securityItem}>· Contact IT for access</span>
