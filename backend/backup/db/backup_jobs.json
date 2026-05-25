@@ -71,15 +71,15 @@
     "type": "Full",
     "destination": "On-Prem NAS",
     "status": "completed",
-    "last_run": "2026-05-21T06:10:36.359286+00:00",
-    "next_run": "2026-05-22T06:10:36.359302+00:00",
-    "size_gb": 12.7,
-    "integrity_hash": "81c87e1f831f5cf7bc713f23bf29b4c405b0c0a4f74ce45ac589444b0127144c",
+    "last_run": "2026-05-25T13:08:17.921067+00:00",
+    "next_run": "2026-05-26T13:08:17.921080+00:00",
+    "size_gb": 12.4,
+    "integrity_hash": "2b5d65c9d9cea26dfc9eccded3d985c178eada32ef3a8ac32228228645681885",
     "integrity_verified": true,
     "retention_days": 30,
     "copies": 3,
     "error_message": null,
-    "duration_seconds": 4557,
+    "duration_seconds": 3867,
     "schedule_cron": "0 3 * * 0",
     "created_at": "2026-04-20T21:05:20.614214+00:00",
     "tags": [
@@ -126,5 +126,24 @@
     "tags": [
       "critical"
     ]
+  },
+  {
+    "id": "bkp-009",
+    "name": "Email archives",
+    "type": "Full",
+    "destination": "On-Prem NAS",
+    "status": "completed",
+    "last_run": "2026-05-25T10:06:42.713535+00:00",
+    "next_run": "2026-05-26T10:06:42.713614+00:00",
+    "size_gb": 42.2,
+    "integrity_hash": "17ebb4ca1258cdc95572d6491990c9830a26e5638f50cc71f4393ed4f414348a",
+    "integrity_verified": true,
+    "retention_days": 30,
+    "copies": 3,
+    "error_message": null,
+    "duration_seconds": 3454,
+    "schedule_cron": "0 2 * * *",
+    "created_at": "2026-05-25T10:06:32.868439+00:00",
+    "tags": []
   }
 ]

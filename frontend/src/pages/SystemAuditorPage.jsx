@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { activity as activityAPI, users as usersAPI } from '../services/authService'
+import { ACCESS_CHANGE_ACTIONS, isBlocked, isAccessChange } from '../utils/auditHelpers'
 
 const NAV_ITEMS = [
   {
@@ -189,22 +190,8 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
 
   const count24h = baseLogs.length
 
-  const ACCESS_CHANGE_ACTIONS = new Set([
-    'ROLE_ASSIGN', 'ROLE_REMOVE',
-    'PERM_REQUEST', 'PERM_UPDATE',
-    'STATUS_CHANGE',
-    'USER_CREATE', 'USER_UPDATE', 'USER_DELETE',
-    'MFA_TOGGLE', 'PASSWORD_CHANGE',
-  ])
-
-  const blockedCount = baseLogs.filter(log => {
-    const r = String(log.result).toUpperCase()
-    return r === 'FAILED' || r === 'ENFORCED'
-  }).length
-
-  const accessChangesCount = baseLogs.filter(log =>
-    ACCESS_CHANGE_ACTIONS.has(String(log.action).toUpperCase())
-  ).length
+  const blockedCount      = baseLogs.filter(isBlocked).length
+  const accessChangesCount = baseLogs.filter(isAccessChange).length
 
   const applyFilter = () => setAppliedFrom(filterFrom) || setAppliedTo(filterTo)
   const clearFilter = () => { setFilterFrom(''); setFilterTo(''); setAppliedFrom(''); setAppliedTo('') }

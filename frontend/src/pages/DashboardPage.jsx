@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { users as usersAPI, roles as rolesAPI, activity as activityAPI, dashboard as dashboardAPI } from '../services/authService'
+import { isBlocked, isAccessChange } from '../utils/auditHelpers'
 import BackupManagementTab from '../components/BackupManagementTab'
 import TaskManagementPanel from '../components/TaskManagementPanel';
 
@@ -1415,6 +1416,11 @@ export default function DashboardPage({ onLogout, currentUser }) {
   const [managingRole, setManagingRole] = useState(null)
   const [rolesList, setRolesList] = useState([])
   const [rbacStats, setRbacStats] = useState(null)
+  const [trendLogs, setTrendLogs] = useState([])
+  const [trendLoading, setTrendLoading] = useState(true)
+  const [trendWindow, setTrendWindow] = useState('today')
+  const [rfUsers, setRfUsers] = useState([])
+  const [rfJobs,  setRfJobs]  = useState([])
 
   const fetchRolesList = async () => {
     try {
@@ -1446,6 +1452,80 @@ export default function DashboardPage({ onLogout, currentUser }) {
     if (activePage === 'access' && !managingRole) fetchRolesList()
   }, [activePage, managingRole])
 
+  // Real-time audit log polling for the trend chart — runs whenever on Risk page
+  useEffect(() => {
+    if (activePage !== 'risk') return
+    let active = true
+    const lock = { fetching: false }
+
+    const fetchTrend = async (showSpinner = false) => {
+      if (lock.fetching) return
+      lock.fetching = true
+      if (showSpinner && active) setTrendLoading(true)
+      try {
+        const PAGE = 200
+        let page = 1
+        let all = []
+        while (true) {
+          const batch = await activityAPI.list({ page_size: PAGE, page })
+          if (!Array.isArray(batch) || batch.length === 0) break
+          all = [...all, ...batch]
+          if (batch.length < PAGE) break
+          page++
+        }
+        if (active) setTrendLogs(all)
+      } catch (err) {
+        console.error('Trend fetch failed:', err)
+      } finally {
+        lock.fetching = false
+        if (showSpinner && active) setTrendLoading(false)
+      }
+    }
+
+    fetchTrend(true)
+    const interval = setInterval(() => fetchTrend(false), 10000)
+    return () => { active = false; clearInterval(interval) }
+  }, [activePage])
+
+  // Risk findings — users + backup jobs, refreshed every 30 s
+  useEffect(() => {
+    if (activePage !== 'risk') return
+    let active = true
+
+    const fetchFindings = async () => {
+      // All users (paginated)
+      try {
+        let all = []; let pg = 1
+        while (true) {
+          const raw = await usersAPI.list({ page_size: 200, page: pg })
+          const batch = Array.isArray(raw) ? raw : (raw.items || [])
+          if (!batch.length) break
+          all = [...all, ...batch]
+          if (pg >= (raw.total_pages ?? 1)) break
+          pg++
+        }
+        if (active) setRfUsers(all)
+      } catch (_) {}
+
+      // Backup jobs
+      try {
+        const token = sessionStorage.getItem('rbac_access')
+        const r = await fetch('/api/v1/backup/jobs', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        if (r.ok) {
+          const data = await r.json()
+          const jobs = Array.isArray(data) ? data : (data.items || data.jobs || [])
+          if (active) setRfJobs(jobs)
+        }
+      } catch (_) {}
+    }
+
+    fetchFindings()
+    const interval = setInterval(fetchFindings, 30000)
+    return () => { active = false; clearInterval(interval) }
+  }, [activePage])
+
   const handleDeclareIncident = async () => {
     try {
       await fetch('/api/v1/risk/register_incident', {
@@ -1467,6 +1547,182 @@ export default function DashboardPage({ onLogout, currentUser }) {
 
   const styles = makeStyles(darkMode)
   const dm = darkMode
+
+  // ── Trend chart helpers ───────────────────────────────────────────────────
+  const now = new Date()
+
+  const TREND_WINDOW_OPTS = [
+    { key: 'today', label: 'Today' },
+    { key: '24h',   label: 'Last 24H' },
+    { key: '48h',   label: 'Last 48H' },
+    { key: '7d',    label: 'Last 7 Days' },
+  ]
+
+  const makeBucket = (logs) => ({
+    total:   logs.length,
+    blocked: logs.filter(isBlocked).length,
+    access:  logs.filter(isAccessChange).length,
+  })
+
+  const buildTrendData = () => {
+    if (trendWindow === 'today') {
+      const currentHour = now.getHours()
+      return Array.from({ length: currentHour + 1 }, (_, h) => {
+        const ml = trendLogs.filter(log => {
+          if (!log.timestamp) return false
+          const d = new Date(log.timestamp)
+          return d.getFullYear() === now.getFullYear() &&
+                 d.getMonth()    === now.getMonth()    &&
+                 d.getDate()     === now.getDate()     &&
+                 d.getHours()    === h
+        })
+        return { label: `${h}:00`, ...makeBucket(ml) }
+      })
+    }
+
+    if (trendWindow === '24h') {
+      const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      return Array.from({ length: 24 }, (_, i) => {
+        const start = new Date(cutoff.getTime() + i * 60 * 60 * 1000)
+        const end   = new Date(start.getTime() + 60 * 60 * 1000)
+        const ml = trendLogs.filter(log => {
+          if (!log.timestamp) return false
+          const t = new Date(log.timestamp).getTime()
+          return t >= start.getTime() && t < end.getTime()
+        })
+        return { label: `${start.getHours()}:00`, ...makeBucket(ml) }
+      })
+    }
+
+    if (trendWindow === '48h') {
+      // 2-hour buckets → 24 data points
+      const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000)
+      return Array.from({ length: 24 }, (_, i) => {
+        const start = new Date(cutoff.getTime() + i * 2 * 60 * 60 * 1000)
+        const end   = new Date(start.getTime() + 2 * 60 * 60 * 1000)
+        const ml = trendLogs.filter(log => {
+          if (!log.timestamp) return false
+          const t = new Date(log.timestamp).getTime()
+          return t >= start.getTime() && t < end.getTime()
+        })
+        return { label: `${start.getHours()}:00`, ...makeBucket(ml) }
+      })
+    }
+
+    // 7d — daily buckets
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(now)
+      day.setDate(now.getDate() - 6 + i)
+      day.setHours(0, 0, 0, 0)
+      const end = new Date(day.getTime() + 24 * 60 * 60 * 1000)
+      const ml = trendLogs.filter(log => {
+        if (!log.timestamp) return false
+        const t = new Date(log.timestamp).getTime()
+        return t >= day.getTime() && t < end.getTime()
+      })
+      return { label: day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), ...makeBucket(ml) }
+    })
+  }
+
+  const trendData        = buildTrendData()
+  const trendMax         = Math.max(...trendData.map(d => d.total), 1)
+  const trendTotalEvents  = trendData.reduce((s, d) => s + d.total,   0)
+  const trendTotalBlocked = trendData.reduce((s, d) => s + d.blocked, 0)
+  const trendTotalAccess  = trendData.reduce((s, d) => s + d.access,  0)
+
+  const TREND_TITLE_MAP = {
+    today: 'SECURITY EVENT TREND — TODAY',
+    '24h': 'SECURITY EVENT TREND — LAST 24 HOURS',
+    '48h': 'SECURITY EVENT TREND — LAST 48 HOURS',
+    '7d':  'SECURITY EVENT TREND — LAST 7 DAYS',
+  }
+
+  // ── Risk Findings (derived from rfUsers, rfJobs, trendLogs) ───────────────
+  const rfTodayStart = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d })()
+  const rf30DaysAgo  = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+
+  // Critical: admin accounts with MFA disabled
+  const rfCritical = rfUsers.filter(u => {
+    const isAdmin = u.roles?.some(r =>
+      String(r.frontend_key || r.name || '').toLowerCase().includes('admin')
+    )
+    return isAdmin && !u.mfa_enabled
+  }).length
+
+  // High: blocked / failed auth events today
+  const rfHigh = trendLogs.filter(log => {
+    if (!log.timestamp) return false
+    return new Date(log.timestamp) >= rfTodayStart && isBlocked(log)
+  }).length
+
+  // Medium: active accounts not logged in for >30 days
+  const rfMedium = rfUsers.filter(u => {
+    if (String(u.status || '').toLowerCase() !== 'active') return false
+    return !u.last_login || new Date(u.last_login) < rf30DaysAgo
+  }).length
+
+  // Low: backup jobs that failed or returned warnings
+  const rfLow = rfJobs.filter(j => {
+    const s = String(j.status || '').toLowerCase()
+    return s === 'failed' || s === 'warning' || s === 'error'
+  }).length
+
+  const rfTotal  = rfCritical + rfHigh + rfMedium + rfLow
+  const rfBarMax = Math.max(rfCritical, rfHigh, rfMedium, rfLow, 1)
+
+  // Donut chart segments — circumference of r=56 circle ≈ 351.86
+  const RF_CIRC = 351.86
+  const RF_ROWS = [
+    { label: 'Critical', sublabel: 'admin accounts, no MFA', color: '#ef4444', count: rfCritical },
+    { label: 'High',     sublabel: 'blocked events today',   color: '#f97316', count: rfHigh     },
+    { label: 'Medium',   sublabel: 'inactive active accounts', color: '#f59e0b', count: rfMedium },
+    { label: 'Low',      sublabel: 'backup job failures',    color: '#22c55e', count: rfLow      },
+  ]
+  let rfAngleOffset = 0
+  const rfDonut = RF_ROWS.map(row => {
+    const dash     = rfTotal > 0 ? (row.count / rfTotal) * RF_CIRC : 0
+    const rotation = -90 + (rfAngleOffset / Math.max(rfTotal, 1)) * 360
+    rfAngleOffset += row.count
+    return { ...row, dash, rotation }
+  })
+
+  // Smooth bezier path through data points in a 800×200 viewBox
+  const makeTrendPath = (values) => {
+    if (values.length < 2) {
+      const W = 800, H = 200, pad = 14
+      const usable = H - pad * 2
+      const y = pad + usable - (values[0] / trendMax) * usable
+      return `M0,${y} L800,${y}`
+    }
+    const W = 800, H = 200, pad = 14
+    const usable = H - pad * 2
+    const step = W / (values.length - 1)
+    const toX = i => i * step
+    const toY = v => pad + usable - (v / trendMax) * usable
+    let d = `M${toX(0)},${toY(values[0])}`
+    for (let i = 1; i < values.length; i++) {
+      const cpx = (toX(i - 1) + toX(i)) / 2
+      d += ` C${cpx},${toY(values[i - 1])} ${cpx},${toY(values[i])} ${toX(i)},${toY(values[i])}`
+    }
+    return d
+  }
+
+  const makeAreaPath = (values) => {
+    const W = 800, H = 200
+    const lastX = values.length < 2 ? W : (values.length - 1) * (W / (values.length - 1))
+    return `${makeTrendPath(values)} L${lastX},${H} L0,${H} Z`
+  }
+
+  const trendPointCoords = (values) => {
+    const W = 800, H = 200, pad = 14
+    const usable = H - pad * 2
+    const step = values.length < 2 ? W : W / (values.length - 1)
+    return values.map((v, i) => ({
+      x: i * step,
+      y: pad + usable - (v / trendMax) * usable,
+      v,
+    }))
+  }
 
   return (
     <div style={styles.wrapper}>
@@ -1745,28 +2001,129 @@ export default function DashboardPage({ onLogout, currentUser }) {
             </div>
           </div>
 
-          {/* Risk Score Trend */}
+          {/* Security Event Trend — live from audit logs */}
           <div style={styles.chartCard}>
-            <div style={styles.chartHeader}><span style={styles.chartTitle}>RISK SCORE TREND (9 MONTHS)</span></div>
-            <div style={styles.chartArea}>
-              <div style={styles.chartInner}>
-                <div style={styles.yAxis}>
-                  {[100, 75, 50, 25, 0].map((v) => <span key={v} style={styles.yLabel}>{v}</span>)}
+            <div style={{ ...styles.chartHeader, flexDirection: 'column', alignItems: 'flex-start', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={styles.chartTitle}>{TREND_TITLE_MAP[trendWindow]}</span>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', display: 'inline-block', flexShrink: 0 }} />
                 </div>
-                <div style={styles.chartPlaceholder}>
-                  <svg width="100%" height="100%" viewBox="0 0 800 200" preserveAspectRatio="none" style={{ display: 'block' }}>
-                    {[0, 50, 100, 150, 200].map((y) => (
-                      <line key={y} x1="0" y1={y} x2="800" y2={y} stroke={dm ? '#334155' : '#e5e7eb'} strokeWidth="1" strokeDasharray="4,4" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {trendLoading && (
+                    <span style={{ fontSize: '11px', color: dm ? '#64748b' : '#9ca3af', fontStyle: 'italic' }}>Syncing…</span>
+                  )}
+                  {/* Window selector */}
+                  <div style={{ display: 'flex', gap: '4px', background: dm ? '#1e293b' : '#f1f5f9', borderRadius: '8px', padding: '3px' }}>
+                    {TREND_WINDOW_OPTS.map(opt => (
+                      <button
+                        key={opt.key}
+                        onClick={() => setTrendWindow(opt.key)}
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: trendWindow === opt.key ? '700' : '500',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          background: trendWindow === opt.key ? (dm ? '#3b82f6' : '#1a237e') : 'transparent',
+                          color: trendWindow === opt.key ? '#fff' : (dm ? '#94a3b8' : '#6b7280'),
+                          transition: 'all 0.15s',
+                        }}
+                      >{opt.label}</button>
                     ))}
-                    <path d="M0,140 C100,130 200,100 300,80 C400,60 500,90 600,120 C700,150 750,170 800,180 L800,200 L0,200 Z" fill="rgba(249,115,22,0.12)" />
-                    <path d="M0,140 C100,130 200,100 300,80 C400,60 500,90 600,120 C700,150 750,170 800,180" fill="none" stroke="#f97316" strokeWidth="2.5" />
-                  </svg>
+                  </div>
                 </div>
               </div>
-              <div style={styles.xAxis}>
-                {['Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'].map((m) => <span key={m} style={styles.xLabel}>{m}</span>)}
+              {/* Legend */}
+              <div style={{ display: 'flex', gap: '22px' }}>
+                {[
+                  { color: '#3b82f6', label: 'Total Events',     count: trendTotalEvents  },
+                  { color: '#ef4444', label: 'Blocked / Failed', count: trendTotalBlocked },
+                  { color: '#f97316', label: 'Access Changes',   count: trendTotalAccess  },
+                ].map(({ color, label, count }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      color: '#fff',
+                      background: color,
+                      padding: '1px 6px',
+                      borderRadius: '20px',
+                      lineHeight: '16px',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {count.toLocaleString()}
+                    </span>
+                    <span style={{ fontSize: '12px', color: dm ? '#94a3b8' : '#6b7280', fontWeight: '500' }}>{label}</span>
+                  </div>
+                ))}
               </div>
             </div>
+
+            <div style={styles.chartArea}>
+              <div style={styles.chartInner}>
+                {/* Y-axis: clean evenly-spaced labels */}
+                <div style={styles.yAxis}>
+                  {(() => {
+                    const step = Math.max(1, Math.ceil(trendMax / 4))
+                    const top  = step * 4
+                    return [top, step * 3, step * 2, step, 0].map((v, i) => (
+                      <span key={i} style={styles.yLabel}>{v}</span>
+                    ))
+                  })()}
+                </div>
+
+                <div style={styles.chartPlaceholder}>
+                  {trendLoading && trendLogs.length === 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '13px', color: dm ? '#475569' : '#9ca3af' }}>
+                      Loading live event data…
+                    </div>
+                  ) : (
+                    <svg width="100%" height="100%" viewBox="0 0 800 200" preserveAspectRatio="none" style={{ display: 'block' }}>
+                      {/* Horizontal grid lines */}
+                      {[0, 50, 100, 150, 200].map(y => (
+                        <line key={y} x1="0" y1={y} x2="800" y2={y} stroke={dm ? '#334155' : '#e5e7eb'} strokeWidth="1" strokeDasharray="4,4" />
+                      ))}
+
+                      {/* Total events — filled area + solid line */}
+                      <path d={makeAreaPath(trendData.map(d => d.total))} fill="rgba(59,130,246,0.08)" />
+                      <path d={makeTrendPath(trendData.map(d => d.total))} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+                      {/* Blocked events — dashed red line */}
+                      <path d={makeTrendPath(trendData.map(d => d.blocked))} fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="6,3" />
+
+                      {/* Access changes — solid orange line */}
+                      <path d={makeTrendPath(trendData.map(d => d.access))} fill="none" stroke="#f97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+                      {/* Dots on total events line */}
+                      {trendPointCoords(trendData.map(d => d.total)).map((pt, i) => (
+                        <circle key={i} cx={pt.x} cy={pt.y} r="3.5" fill="#3b82f6" stroke={dm ? '#1e293b' : 'white'} strokeWidth="2" />
+                      ))}
+                    </svg>
+                  )}
+                </div>
+              </div>
+
+              {/* X-axis: real month labels */}
+              <div style={styles.xAxis}>
+                {trendData.map(d => <span key={d.label} style={styles.xLabel}>{d.label}</span>)}
+              </div>
+            </div>
+
+            {/* Period summary strip */}
+            {trendLogs.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${trendData.length}, 1fr)`, gap: '4px', marginTop: '12px', borderTop: `1px solid ${dm ? '#334155' : '#f3f4f6'}`, paddingTop: '12px' }}>
+                {trendData.map(d => (
+                  <div key={d.label} style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: dm ? '#475569' : '#9ca3af', marginBottom: '4px', letterSpacing: '0.3px' }}>{d.label}</div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#3b82f6' }}>{d.total}</div>
+                    {d.blocked > 0 && <div style={{ fontSize: '10px', color: '#ef4444', fontWeight: '600' }}>{d.blocked} blk</div>}
+                    {d.access > 0 && <div style={{ fontSize: '10px', color: '#f97316', fontWeight: '600' }}>{d.access} chg</div>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Department Risk Heatmap */}
@@ -1797,44 +2154,55 @@ export default function DashboardPage({ onLogout, currentUser }) {
             </div>
           </div>
 
-          {/* Vulnerability Distribution */}
+          {/* Security Risk Findings */}
           <div style={styles.chartCard}>
-            <div style={styles.chartHeader}><span style={styles.chartTitle}>VULNERABILITY DISTRIBUTION BY SEVERITY</span></div>
+            <div style={styles.chartHeader}>
+              <span style={styles.chartTitle}>SECURITY RISK FINDINGS BY SEVERITY</span>
+              <span style={{ fontSize: '11px', color: dm ? '#475569' : '#9ca3af' }}>live · auto-refresh 30s</span>
+            </div>
             <div style={styles.vulnBody}>
               <div style={styles.donutWrap}>
                 <svg width="130" height="130" viewBox="0 0 160 160">
+                  {/* Track */}
                   <circle cx="80" cy="80" r="56" fill="none" stroke={dm ? '#334155' : '#f3f4f6'} strokeWidth="28" />
-                  <circle cx="80" cy="80" r="56" fill="none" stroke="#ef4444" strokeWidth="28" strokeDasharray="0 351.86" strokeLinecap="butt" transform="rotate(-90 80 80)" />
-                  <circle cx="80" cy="80" r="56" fill="none" stroke="#f97316" strokeWidth="28" strokeDasharray="0 351.86" strokeLinecap="butt" transform="rotate(-90 80 80)" />
-                  <circle cx="80" cy="80" r="56" fill="none" stroke="#f59e0b" strokeWidth="28" strokeDasharray="0 351.86" strokeLinecap="butt" transform="rotate(-90 80 80)" />
-                  <circle cx="80" cy="80" r="56" fill="none" stroke="#22c55e" strokeWidth="28" strokeDasharray="0 351.86" strokeLinecap="butt" transform="rotate(-90 80 80)" />
+                  {rfTotal === 0 ? (
+                    <circle cx="80" cy="80" r="56" fill="none" stroke={dm ? '#334155' : '#e5e7eb'} strokeWidth="28" />
+                  ) : rfDonut.map(seg => (
+                    <circle key={seg.label} cx="80" cy="80" r="56" fill="none"
+                      stroke={seg.color} strokeWidth="28"
+                      strokeDasharray={`${seg.dash} ${RF_CIRC}`}
+                      strokeLinecap="butt"
+                      transform={`rotate(${seg.rotation} 80 80)`}
+                    />
+                  ))}
+                  {/* Centre total */}
+                  <text x="80" y="75" textAnchor="middle" fontSize="22" fontWeight="800" fill={dm ? '#f1f5f9' : '#1e293b'}>{rfTotal}</text>
+                  <text x="80" y="92" textAnchor="middle" fontSize="10" fill={dm ? '#64748b' : '#9ca3af'}>findings</text>
                 </svg>
               </div>
               <div style={styles.vulnRows}>
-                {[
-                  { label: 'Critical', color: '#ef4444' },
-                  { label: 'High', color: '#f97316' },
-                  { label: 'Medium', color: '#f59e0b' },
-                  { label: 'Low', color: '#22c55e' },
-                ].map(({ label, color }) => (
+                {RF_ROWS.map(({ label, sublabel, color, count }) => (
                   <div key={label} style={styles.vulnRow}>
                     <div style={styles.vulnRowHeader}>
                       <div style={styles.vulnRowLeft}>
                         <span style={{ ...styles.vulnDot, background: color }} />
-                        <span style={styles.vulnLabel}>{label}</span>
+                        <div>
+                          <span style={styles.vulnLabel}>{label}</span>
+                          <span style={{ fontSize: '10px', color: dm ? '#475569' : '#9ca3af', marginLeft: '6px' }}>{sublabel}</span>
+                        </div>
                       </div>
-                      <span style={styles.vulnCount}>— CVEs</span>
+                      <span style={{ ...styles.vulnCount, color, fontWeight: '700' }}>{count}</span>
                     </div>
                     <div style={styles.vulnTrack}>
-                      <div style={{ ...styles.vulnBar, background: color, width: '0%' }} />
+                      <div style={{ ...styles.vulnBar, background: color, width: `${(count / rfBarMax) * 100}%`, transition: 'width 0.5s ease' }} />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
             <div style={styles.vulnFooter}>
-              <span style={styles.vulnTotalLabel}>Total Vulnerabilities</span>
-              <span style={styles.vulnTotalValue}>— CVEs</span>
+              <span style={styles.vulnTotalLabel}>Total Risk Findings</span>
+              <span style={{ ...styles.vulnTotalValue, color: rfTotal > 0 ? '#ef4444' : (dm ? '#94a3b8' : '#6b7280') }}>{rfTotal} findings</span>
             </div>
           </div>
         </>}
