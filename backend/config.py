@@ -7,12 +7,12 @@ import os
 
 # ─── LLM / Ollama ────────────────────────────────────────────────────────────
 OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL: str    = os.getenv("OLLAMA_MODEL", "llama3")
+OLLAMA_MODEL: str    = os.getenv("OLLAMA_MODEL", "tinyllama")
 
 # ─── PostgreSQL ──────────────────────────────────────────────────────────────
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:root@localhost:5432/aitrms"
+    "postgresql+asyncpg://postgres:rest777@localhost:5432/aitrms"
 )
 
 # ─── Keycloak ────────────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ ENABLE_ELASTICSEARCH_POLLING: bool = os.getenv("ENABLE_ELASTICSEARCH_POLLING", "
 )
 
 # Optional shared secret so ELK poller can call telemetry ingest without Keycloak JWT
-INTERNAL_INGEST_TOKEN: str = os.getenv("INTERNAL_INGEST_TOKEN", "")
+INTERNAL_INGEST_TOKEN: str = os.getenv("INTERNAL_INGEST_TOKEN", "aitrms-internal-ingest-secret")
 
 # ─── Architecture ────────────────────────────────────────────────────────────
 TELEMETRY_INGEST_URL: str = os.getenv(

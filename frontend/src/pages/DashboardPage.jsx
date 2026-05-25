@@ -252,7 +252,7 @@ function RoleProfileView({ role, onBack, dm, styles }) {
         setAlertRoleChange(settings.alert_on_role_change)
         setWeeklyReport(settings.weekly_access_report)
         setSessionTimeout(settings.session_timeout_minutes || '')
-        setMaxFailedAttempts(settings.max_failed_login_attempts || '')
+        setMaxFailedAttempts(settings.max_failed_attempts || '')
       } catch (err) {
         console.error('Error fetching role settings:', err)
       }
@@ -473,6 +473,19 @@ function RoleProfileView({ role, onBack, dm, styles }) {
 
   const handleSaveSettings = async () => {
     if (!roleData) return
+
+    const timeoutVal = sessionTimeout !== '' ? parseInt(sessionTimeout) : null
+    const attemptsVal = maxFailedAttempts !== '' ? parseInt(maxFailedAttempts) : null
+
+    if (timeoutVal !== null && (isNaN(timeoutVal) || timeoutVal < 1 || timeoutVal > 1440)) {
+      alert('Session timeout must be between 1 and 1440 minutes.')
+      return
+    }
+    if (attemptsVal !== null && (isNaN(attemptsVal) || attemptsVal < 1 || attemptsVal > 20)) {
+      alert('Max failed login attempts must be between 1 and 20.')
+      return
+    }
+
     try {
       const updates = {
         require_mfa: mfaEnabled,
@@ -484,8 +497,8 @@ function RoleProfileView({ role, onBack, dm, styles }) {
         alert_on_role_change: alertRoleChange,
         weekly_access_report: weeklyReport,
       }
-      if (sessionTimeout) updates.session_timeout_minutes = parseInt(sessionTimeout)
-      if (maxFailedAttempts) updates.max_failed_login_attempts = parseInt(maxFailedAttempts)
+      if (timeoutVal !== null) updates.session_timeout_minutes = timeoutVal
+      if (attemptsVal !== null) updates.max_failed_attempts = attemptsVal
 
       await rolesAPI.updateSettings(roleData.id, updates)
       alert('Settings saved successfully!')

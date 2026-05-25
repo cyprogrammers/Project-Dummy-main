@@ -20,6 +20,7 @@ const storage = {
   clearTokens: () => {
     sessionStorage.removeItem("rbac_access");
     sessionStorage.removeItem("rbac_refresh");
+    sessionStorage.removeItem("rbac_session_timeout");
   },
 };
 
@@ -69,8 +70,11 @@ export async function login({ email, password, totpCode = null }) {
     return { mfa_required: true, email };
   }
 
-  // Store tokens
+  // Store tokens and session timeout (expires_in is in seconds)
   storage.setTokens(data.token.access_token, data.token.refresh_token);
+  if (data.token?.expires_in) {
+    sessionStorage.setItem("rbac_session_timeout", String(data.token.expires_in));
+  }
 
   // Derive the frontend route key from the user's first role
   const roleKey = data.user.roles?.[0]?.frontend_key || "it-admin";

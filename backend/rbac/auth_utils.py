@@ -19,7 +19,7 @@ from fastapi import HTTPException, Request, status
 import config as cfg
 from rbac.models import (
     RBACActivityLog, ActivityAction, ActivityResult,
-    RBACSession, RBACUser, UserStatus
+    RBACRole, RBACSession, RBACUser, UserStatus
 )
 
 # ─── Config ───────────────────────────────────────────────────────────────────
@@ -228,16 +228,12 @@ async def get_current_rbac_user(
     if not session:
         raise exc
 
-    # Bump last_activity
-    session.last_activity = datetime.now(timezone.utc)
-    await db.commit()
-
-    # Fetch user
+    # Fetch user with role settings so we can compute the inactivity timeout
     from sqlalchemy.orm import selectinload
     user_result = await db.execute(
         select(RBACUser)
         .where(RBACUser.id == int(payload["sub"]))
-        .options(selectinload(RBACUser.roles))
+        .options(selectinload(RBACUser.roles).selectinload(RBACRole.settings))
     )
     user = user_result.scalars().first()
     if not user:
@@ -246,4 +242,12 @@ async def get_current_rbac_user(
         raise HTTPException(403, "Account suspended")
     if user.status == UserStatus.locked:
         raise HTTPException(403, "Account locked")
+
+    # Slide the session expiry window: each request resets the countdown
+    now = datetime.now(timezone.utc)
+    timeout_minutes = get_timeout_for_user(user)
+    session.last_activity = now
+    session.expires_at = now + timedelta(minutes=timeout_minutes)
+    await db.commit()
+
     return user

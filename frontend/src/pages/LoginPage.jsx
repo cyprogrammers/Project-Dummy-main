@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import logo from '../components/images/Logo-ARM.png'
 import { login } from '../services/authService'
 
-export default function LoginPage({ onLogin }) {
+export default function LoginPage({ onLogin, sessionExpiredMessage }) {
   const [email,       setEmail]       = useState('')
   const [password,    setPassword]    = useState('')
   const [totpCode,    setTotpCode]    = useState('')
@@ -149,6 +149,16 @@ export default function LoginPage({ onLogin }) {
             <>
               <h2 style={styles.cardTitle}>Welcome Back</h2>
               <p style={styles.cardSubtitle}>Sign in to access the AITRMS security dashboard</p>
+
+              {/* Session expired banner */}
+              {sessionExpiredMessage && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 14px', borderRadius: '8px', background: '#fef3c7', border: '1px solid #f59e0b', marginBottom: '16px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <span style={{ fontSize: '13px', color: '#92400e' }}>{sessionExpiredMessage}</span>
+                </div>
+              )}
 
               {/* Last session banner */}
               <div style={styles.sessionBanner}>

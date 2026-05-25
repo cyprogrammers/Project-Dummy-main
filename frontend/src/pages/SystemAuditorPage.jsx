@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { activity as activityAPI } from '../services/authService'
+import { activity as activityAPI, users as usersAPI } from '../services/authService'
 
 const NAV_ITEMS = [
   {
@@ -57,6 +57,17 @@ const PAGE_HEADERS = {
 
 const PLACEHOLDER_ROWS = [1, 2, 3, 4]
 
+const EXPORT_TYPES = [
+  { id: 'audit-trail',           label: 'Audit Trail',           desc: 'All system events, logins & access changes' },
+  { id: 'control-effectiveness', label: 'Control Effectiveness', desc: 'GDPR / POPIA / ISO 27001 live control scores' },
+  { id: 'gdpr',                  label: 'GDPR Evaluation',       desc: 'Full GDPR compliance findings & recommendations' },
+  { id: 'popia',                 label: 'POPIA Evaluation',      desc: 'Full POPIA compliance findings & recommendations' },
+  { id: 'iso27001',              label: 'ISO 27001 Evaluation',  desc: 'ISO 27001 audit findings & observations' },
+  { id: 'backup-status',         label: 'Backup Status',         desc: 'Backup jobs, integrity checks & storage utilization' },
+  { id: 'task-report',           label: 'Task Report',           desc: 'IT tasks, assignments & completion status' },
+  { id: 'user-access',           label: 'User Access Report',    desc: 'Users, roles, permissions & MFA status' },
+]
+
 export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [activePage, setActivePage] = useState('audit-trail')
   const [darkMode, setDarkMode] = useState(false)
@@ -68,6 +79,17 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
   const [filterTo, setFilterTo] = useState('')
   const [appliedFrom, setAppliedFrom] = useState('')
   const [appliedTo, setAppliedTo] = useState('')
+
+  const [controlsData, setControlsData] = useState(null)
+  const [controlsLoading, setControlsLoading] = useState(false)
+  const [controlsError, setControlsError] = useState('')
+
+  const [exportHistory, setExportHistory] = useState([])
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportType, setExportType] = useState('audit-trail')
+  const [exportFormat, setExportFormat] = useState('csv')
+  const [exportFrom, setExportFrom] = useState('')
+  const [exportTo, setExportTo] = useState('')
 
   const isFetchingRef = useRef(false)
 
@@ -110,6 +132,29 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
     const interval = setInterval(() => fetchLogs(false), 5000)
     return () => { active = false; clearInterval(interval) }
   }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const fetchControls = async (showSpinner = false) => {
+      if (showSpinner) setControlsLoading(true)
+      try {
+        const res = await fetch('/api/v1/controls/effectiveness')
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (active) { setControlsData(data); setControlsError('') }
+      } catch (err) {
+        if (active) setControlsError(err.message || 'Failed to load control metrics')
+      } finally {
+        if (active) setControlsLoading(false)
+      }
+    }
+
+    fetchControls(true)
+    const interval = setInterval(() => fetchControls(false), 30000)
+    return () => { active = false; clearInterval(interval) }
+  }, [])
+
   const dm = darkMode
   const styles = makeStyles(dm)
   const header = PAGE_HEADERS[activePage]
@@ -163,6 +208,304 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
 
   const applyFilter = () => setAppliedFrom(filterFrom) || setAppliedTo(filterTo)
   const clearFilter = () => { setFilterFrom(''); setFilterTo(''); setAppliedFrom(''); setAppliedTo('') }
+
+  // ── Export helpers ────────────────────────────────────────────────────────
+  const buildExportHTML = (title, headerRow, dataRows, from, to, summaryLines = []) => {
+    const period = (from || to) ? `${from || 'start'} → ${to || 'now'}` : 'Full dataset'
+    const thead = headerRow.map(h => `<th>${h}</th>`).join('')
+    const tbody = dataRows.map(r =>
+      `<tr>${r.map(c => `<td>${c ?? '—'}</td>`).join('')}</tr>`
+    ).join('\n')
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${title}</title>
+<style>
+  body{font-family:Arial,sans-serif;margin:40px;color:#111;font-size:12px}
+  h1{font-size:20px;margin-bottom:4px}
+  .meta{color:#6b7280;font-size:11px;margin-bottom:14px}
+  .summary{background:#f3f4f6;border-radius:6px;padding:10px 14px;margin-bottom:14px;line-height:1.7}
+  table{width:100%;border-collapse:collapse}
+  th{background:#1d4ed8;color:white;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:7px 10px;border-bottom:1px solid #e5e7eb}
+  tr:nth-child(even) td{background:#f9fafb}
+  @media print{body{margin:20px}}
+</style></head><body>
+<h1>${title}</h1>
+<div class="meta">Generated: ${new Date().toLocaleString()} &nbsp;|&nbsp; Period: ${period} &nbsp;|&nbsp; System: AITRMS Audit Console</div>
+${summaryLines.length ? `<div class="summary">${summaryLines.map(l => `<div>${l}</div>`).join('')}</div>` : ''}
+<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>
+</body></html>`
+  }
+
+  const triggerDownload = (entry) => {
+    if (!entry.blobUrl) return
+    const a = document.createElement('a')
+    a.href = entry.blobUrl
+    a.download = entry.filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  const handleGenerateExport = async () => {
+    if (exportBusy) return
+    setExportBusy(true)
+
+    const eid = `exp-${Date.now()}`
+    const typeDef = EXPORT_TYPES.find(t => t.id === exportType)
+    const newEntry = {
+      id: eid,
+      name: typeDef.label,
+      format: exportFormat === 'csv' ? 'CSV' : 'HTML',
+      requestedBy: currentUser?.email || 'auditor',
+      generatedAt: new Date().toISOString(),
+      status: 'generating',
+      records: 0,
+      blobUrl: null,
+      filename: '',
+      error: '',
+    }
+    setExportHistory(h => [newEntry, ...h])
+
+    try {
+      const token = sessionStorage.getItem('rbac_access')
+      const authFetch = async (url, opts = {}) => {
+        const method = (opts.method || 'GET').toUpperCase()
+        const headers = { Authorization: `Bearer ${token}`, ...(opts.headers || {}) }
+        if (method !== 'GET' && method !== 'HEAD') headers['Content-Type'] = 'application/json'
+        const r = await fetch(url, { ...opts, headers })
+        if (!r.ok) {
+          let detail = `HTTP ${r.status}`
+          try { const body = await r.json(); detail = body.detail || JSON.stringify(body) } catch (_) {}
+          throw new Error(`${detail} (${url})`)
+        }
+        return r.json()
+      }
+
+      const fromMs = exportFrom ? new Date(exportFrom).getTime() : null
+      const toMs   = exportTo   ? new Date(exportTo + 'T23:59:59.999Z').getTime() : null
+      const inRange = (ts) => {
+        if (!ts) return true
+        const t = new Date(ts).getTime()
+        if (fromMs && t < fromMs) return false
+        if (toMs   && t > toMs)   return false
+        return true
+      }
+      const byDate = (rows, field) => (fromMs || toMs) ? rows.filter(r => inRange(r[field])) : rows
+
+      const esc = (v) => {
+        const s = v === null || v === undefined ? '' : String(v)
+        return (s.includes(',') || s.includes('"') || s.includes('\n'))
+          ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const toCSV = (headers, rows) =>
+        [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n')
+
+      let csvContent = ''
+      let htmlContent = ''
+      let recordCount = 0
+
+      if (exportType === 'audit-trail') {
+        const PAGE = 200
+        let page = 1; let all = []
+        while (true) {
+          const batch = await authFetch(`/api/v1/rbac/activity?page_size=${PAGE}&page=${page}`)
+          if (!Array.isArray(batch) || batch.length === 0) break
+          all = [...all, ...batch]
+          if (batch.length < PAGE) break
+          page++
+        }
+        const rows = byDate(all, 'timestamp')
+        recordCount = rows.length
+        const headers = ['Timestamp', 'Actor', 'Action', 'Target', 'IP Address', 'Result', 'Details']
+        const data = rows.map(r => [
+          r.timestamp ? new Date(r.timestamp).toISOString() : '',
+          r.actor_email || '', r.action || '',
+          r.target_user_email || r.role_name || '',
+          r.ip_address || '', r.result || '',
+          r.details ? JSON.stringify(r.details) : '',
+        ])
+        csvContent = toCSV(headers, data)
+        htmlContent = buildExportHTML('Audit Trail Export', headers.slice(0, -1),
+          rows.map(r => [
+            r.timestamp ? new Date(r.timestamp).toLocaleString() : '—',
+            r.actor_email || '—', r.action || '—',
+            r.target_user_email || r.role_name || '—',
+            r.ip_address || '—', r.result || '—',
+          ]), exportFrom, exportTo)
+
+      } else if (exportType === 'control-effectiveness') {
+        const data = await authFetch('/api/v1/controls/effectiveness')
+        const metrics = data.controls || []
+        recordCount = metrics.length
+        const summaryCSV = [
+          `GDPR Score,${data.gdpr_score}/100`,
+          `POPIA Score,${data.popia_score}/100`,
+          `ISO 27001 Score,${data.iso_score}/100`,
+          `Assessed At,${data.assessed_at}`,
+          `Window (hours),${data.window_hours}`,
+          '',
+        ].join('\n')
+        csvContent = summaryCSV + toCSV(
+          ['Control ID', 'Control Name', 'Domain', 'Framework', 'Effectiveness (%)', 'Status', 'Last Assessed'],
+          metrics.map(c => [c.id, c.name, c.domain, c.framework, c.effectiveness, c.status, c.last_assessed])
+        )
+        htmlContent = buildExportHTML('Control Effectiveness Report',
+          ['Control ID', 'Name', 'Domain', 'Framework', 'Effectiveness', 'Status', 'Last Assessed'],
+          metrics.map(c => [c.id, c.name, c.domain, c.framework, `${c.effectiveness}%`, c.status, c.last_assessed]),
+          exportFrom, exportTo,
+          [`GDPR: ${data.gdpr_score}/100  |  POPIA: ${data.popia_score}/100  |  ISO 27001: ${data.iso_score}/100  |  Assessed: ${new Date(data.assessed_at).toLocaleString()}`]
+        )
+
+      } else if (exportType === 'gdpr' || exportType === 'popia' || exportType === 'iso27001') {
+        const urlMap  = { gdpr: '/api/v1/gdpr/evaluate?hours=24', popia: '/api/v1/popia/evaluate?hours=24', iso27001: '/api/v1/iso27001/evaluate?hours=24' }
+        const nameMap = { gdpr: 'GDPR', popia: 'POPIA', iso27001: 'ISO 27001' }
+        const data = await authFetch(urlMap[exportType], { method: 'POST' })
+        const findings = data.findings || []
+        recordCount = findings.length
+        const summaryLines = [
+          `Overall Score: ${data.overall_score ?? '—'}`,
+          `Risk Level: ${data.risk_level ?? '—'}`,
+          `Events Analysed: ${data.events_analyzed ?? '—'}`,
+          `Log Window: ${data.log_window_hours ?? '—'}h`,
+          `Evaluated: ${data.evaluated_at ? new Date(data.evaluated_at).toLocaleString() : '—'}`,
+          data.summary ? `Summary: ${data.summary}` : '',
+        ].filter(Boolean)
+        csvContent = [
+          ...summaryLines.map(l => esc(l)),
+          '',
+          toCSV(
+            ['Article / Section', 'Title', 'Risk Level', 'Observation', 'Recommendation'],
+            findings.map(f => [f.article || '', f.title || '', f.risk_level || '', f.observation || '', f.recommendation || ''])
+          ),
+        ].join('\n')
+        htmlContent = buildExportHTML(`${nameMap[exportType]} Compliance Report`,
+          ['Article', 'Title', 'Risk Level', 'Observation', 'Recommendation'],
+          findings.map(f => [f.article, f.title, f.risk_level, f.observation, f.recommendation]),
+          exportFrom, exportTo, summaryLines
+        )
+
+      } else if (exportType === 'backup-status') {
+        const [jobs, overview] = await Promise.all([
+          authFetch('/api/v1/backup/jobs'),
+          authFetch('/api/v1/backup/overview'),
+        ])
+        const jobList = Array.isArray(jobs) ? jobs : []
+        recordCount = jobList.length
+        csvContent = [
+          `Success Rate,${overview.success_rate_percent}%`,
+          `Total Backup Size,${overview.total_backup_size_gb} GB`,
+          `Failed Jobs,${overview.failed_jobs}`,
+          `Verified Jobs,${overview.jobs_verified}`,
+          '',
+          toCSV(
+            ['Name', 'Type', 'Destination', 'Status', 'Last Run', 'Next Run', 'Size (GB)', 'Retention (days)', 'Copies', 'Integrity Verified', 'Duration (s)', 'Error'],
+            jobList.map(j => [
+              j.name, j.type, j.destination, j.status,
+              j.last_run ? new Date(j.last_run).toISOString() : '',
+              j.next_run ? new Date(j.next_run).toISOString() : '',
+              j.size_gb || 0, j.retention_days, j.copies,
+              j.integrity_verified ? 'Yes' : 'No',
+              j.duration_seconds || '', j.error_message || '',
+            ])
+          ),
+        ].join('\n')
+        htmlContent = buildExportHTML('Backup Status Report',
+          ['Name', 'Type', 'Destination', 'Status', 'Last Run', 'Size (GB)', 'Integrity', 'Retention'],
+          jobList.map(j => [
+            j.name, j.type, j.destination, j.status,
+            j.last_run ? new Date(j.last_run).toLocaleString() : '—',
+            `${j.size_gb || 0} GB`,
+            j.integrity_verified ? 'Verified' : 'Unverified',
+            `${j.retention_days}d × ${j.copies} copies`,
+          ]),
+          exportFrom, exportTo,
+          [`Success Rate: ${overview.success_rate_percent}%  |  Total: ${overview.total_backup_size_gb} GB  |  Failed: ${overview.failed_jobs}  |  Verified: ${overview.jobs_verified}`]
+        )
+
+      } else if (exportType === 'task-report') {
+        const [tasks, overview] = await Promise.all([
+          authFetch('/api/v1/tasks/'),
+          authFetch('/api/v1/tasks/overview'),
+        ])
+        const taskList = byDate(Array.isArray(tasks) ? tasks : (tasks?.items || tasks?.tasks || []), 'created_at')
+        recordCount = taskList.length
+        csvContent = toCSV(
+          ['ID', 'Title', 'Category', 'Priority', 'Status', 'Assigned To', 'Assigned By', 'Due Date', 'Created At', 'Completed At', 'Tags'],
+          taskList.map(t => [
+            t.id, t.title, t.category, t.priority, t.status,
+            t.assigned_to_email || '', t.assigned_by_email || '',
+            t.due_date || '', t.created_at || '', t.completed_at || '',
+            (t.tags || []).join('; '),
+          ])
+        )
+        htmlContent = buildExportHTML('Task Report',
+          ['Title', 'Category', 'Priority', 'Status', 'Assigned To', 'Due Date', 'Created'],
+          taskList.map(t => [
+            t.title, t.category, t.priority, t.status,
+            t.assigned_to_email || '—',
+            t.due_date || '—',
+            t.created_at ? new Date(t.created_at).toLocaleDateString() : '—',
+          ]),
+          exportFrom, exportTo,
+          [`Total: ${overview.total}  |  Pending: ${overview.pending}  |  In Progress: ${overview.in_progress}  |  Completed: ${overview.completed}  |  Overdue: ${overview.overdue}`]
+        )
+
+      } else if (exportType === 'user-access') {
+        // Use the service layer (handles auth + token refresh) and paginate fully
+        let allUsers = []
+        let page = 1
+        while (true) {
+          const raw = await usersAPI.list({ page_size: 200, page })
+          const batch = Array.isArray(raw) ? raw : (raw.items || [])
+          if (!batch.length) break
+          allUsers = [...allUsers, ...batch]
+          const totalPages = raw.total_pages ?? 1
+          if (page >= totalPages) break
+          page++
+        }
+        recordCount = allUsers.length
+        csvContent = toCSV(
+          ['Email', 'First Name', 'Surname', 'Status', 'MFA Enabled', 'Roles', 'Last Login', 'Created At'],
+          allUsers.map(u => [
+            u.email, u.first_name, u.surname, u.status,
+            u.mfa_enabled ? 'Yes' : 'No',
+            (u.roles || []).map(r => r.name).join('; '),
+            u.last_login ? new Date(u.last_login).toISOString() : '',
+            u.created_at ? new Date(u.created_at).toISOString() : '',
+          ])
+        )
+        htmlContent = buildExportHTML('User Access Report',
+          ['Email', 'Status', 'MFA', 'Roles', 'Last Login'],
+          allUsers.map(u => [
+            u.email, u.status,
+            u.mfa_enabled ? 'Yes' : 'No',
+            (u.roles || []).map(r => r.name).join(', ') || '—',
+            u.last_login ? new Date(u.last_login).toLocaleString() : 'Never',
+          ]),
+          exportFrom, exportTo
+        )
+      }
+
+      const dateStamp = new Date().toISOString().split('T')[0]
+      const baseName  = `${exportType}-${dateStamp}`
+      const isCSV     = exportFormat === 'csv'
+      const content   = isCSV ? csvContent : htmlContent
+      const mime      = isCSV ? 'text/csv;charset=utf-8;' : 'text/html;charset=utf-8;'
+      const filename  = `${baseName}.${isCSV ? 'csv' : 'html'}`
+      const blob      = new Blob([content], { type: mime })
+      const blobUrl   = URL.createObjectURL(blob)
+
+      setExportHistory(h => h.map(e =>
+        e.id === eid ? { ...e, status: 'completed', records: recordCount, blobUrl, filename } : e
+      ))
+    } catch (err) {
+      setExportHistory(h => h.map(e =>
+        e.id === eid ? { ...e, status: 'failed', error: err.message } : e
+      ))
+    } finally {
+      setExportBusy(false)
+    }
+  }
 
   return (
     <div style={styles.wrapper}>
@@ -335,16 +678,16 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    {['TIMESTAMP', 'ACTOR', 'ACTION', 'TARGET', 'IP ADDRESS', 'RESULT'].map((col) => (
+                    {['TIMESTAMP', 'ACTOR', 'ACTION', 'TARGET', 'RESULT'].map((col) => (
                       <th key={col} style={styles.th}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {auditLoading ? (
-                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading audit events…</td></tr>
+                    <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>Loading audit events…</td></tr>
                   ) : baseLogs.length === 0 ? (
-                    <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>{auditLogs.length === 0 ? 'No audit events recorded yet' : filterActive ? 'No events match the selected date range' : 'No audit events recorded today'}</td></tr>
+                    <tr><td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: dm ? '#64748b' : '#9ca3af' }}>{auditLogs.length === 0 ? 'No audit events recorded yet' : filterActive ? 'No events match the selected date range' : 'No audit events recorded today'}</td></tr>
                   ) : baseLogs.map((log, i, arr) => {
                     const r = String(log.result).toUpperCase()
                     const resultColor = r === 'SUCCESS'  ? { background: '#d1fae5', color: '#065f46', border: '1px solid #10b981' }
@@ -418,7 +761,6 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                             )}
                           </div>
                         </td>
-                        <td style={styles.td}>{log.ip_address || '—'}</td>
                         <td style={styles.td}>
                           <span style={{ display: 'inline-block', padding: '3px 14px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', ...resultColor }}>
                             {r === 'FAILED' ? 'BLOCKED' : r}
@@ -430,23 +772,276 @@ export default function SystemAuditorPage({ onLogout, currentUser }) {
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div style={styles.alertList}>
-              {PLACEHOLDER_ROWS.map((item, index) => (
-                <div key={item} style={{ ...styles.alertRow, borderBottom: index < PLACEHOLDER_ROWS.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
-                  <div style={styles.alertLeft}>
-                    <span style={{ ...styles.alertDot, background: index % 2 === 0 ? '#ef4444' : '#0ea5e9' }} />
-                    <div>
-                      <div style={styles.alertTitle}>—</div>
-                      <div style={styles.alertSource}>—</div>
-                    </div>
-                  </div>
-                  <div style={styles.alertRight}>
-                    <span style={styles.alertTime}>—</span>
-                    <span style={styles.badgeNeutral}>—</span>
-                  </div>
+          ) : activePage === 'control-effectiveness' ? (() => {
+            const metrics = controlsData?.controls ?? []
+            const passingCount  = metrics.filter(c => c.status === 'Passing').length
+            const degradedCount = metrics.filter(c => c.status === 'Degraded').length
+            const failingCount  = metrics.filter(c => c.status === 'Failing').length
+            const avgEff = metrics.length > 0
+              ? Math.round(metrics.reduce((s, c) => s + c.effectiveness, 0) / metrics.length)
+              : 0
+
+            const statusSty = (s) =>
+              s === 'Passing'  ? { bg: '#d1fae5', color: '#065f46', border: '#10b981' } :
+              s === 'Degraded' ? { bg: '#fef3c7', color: '#92400e', border: '#f59e0b' } :
+                                 { bg: '#fee2e2', color: '#991b1b', border: '#ef4444' }
+
+            const effColor = (pct) => pct >= 85 ? '#16a34a' : pct >= 65 ? '#d97706' : '#dc2626'
+
+            if (controlsLoading && !controlsData) {
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '14px', padding: '60px 0', textAlign: 'center' }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1.2s linear infinite' }}>
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                  <div style={{ fontSize: '14px', fontWeight: '600', color: dm ? '#94a3b8' : '#6b7280' }}>Loading live control metrics…</div>
+                  <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
                 </div>
-              ))}
+              )
+            }
+
+            if (controlsError && !controlsData) {
+              return (
+                <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '10px', padding: '16px 20px', fontSize: '13px', color: '#dc2626', fontWeight: '600' }}>
+                  Failed to load control metrics: {controlsError}
+                </div>
+              )
+            }
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+
+                {/* Summary strip */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                  {[
+                    { label: 'TOTAL CONTROLS', value: metrics.length || 12, color: dm ? '#f1f5f9' : '#111827' },
+                    { label: 'PASSING',         value: passingCount,         color: '#16a34a' },
+                    { label: 'DEGRADED',        value: degradedCount,        color: '#d97706' },
+                    { label: 'FAILING',         value: failingCount,         color: '#dc2626' },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ background: dm ? '#0f172a' : '#f8fafc', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '12px', padding: '14px 18px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', marginBottom: '6px' }}>{label}</div>
+                      <div style={{ fontSize: '28px', fontWeight: '800', color, lineHeight: '1' }}>{controlsLoading ? '…' : value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Avg effectiveness bar */}
+                <div style={{ background: dm ? '#0f172a' : '#f8fafc', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}`, borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.6px', whiteSpace: 'nowrap' }}>AVG EFFECTIVENESS</span>
+                  <div style={{ flex: 1, height: '10px', borderRadius: '999px', background: dm ? '#1e293b' : '#e5e7eb', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${avgEff}%`, borderRadius: '999px', background: effColor(avgEff), transition: 'width 0.6s ease' }} />
+                  </div>
+                  <span style={{ fontSize: '16px', fontWeight: '800', color: effColor(avgEff), minWidth: '44px', textAlign: 'right' }}>
+                    {controlsLoading ? '…' : `${avgEff}%`}
+                  </span>
+                  {controlsData && (
+                    <span style={{ fontSize: '11px', color: dm ? '#475569' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                      Updated {new Date(controlsData.assessed_at).toLocaleTimeString()} · {controlsData.window_hours}h window
+                    </span>
+                  )}
+                </div>
+
+                {/* Table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        {['Control ID', 'Control Name', 'Domain', 'Framework', 'Effectiveness', 'Status', 'Last Assessed'].map(h => (
+                          <th key={h} style={styles.th}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {metrics.map((c, i, arr) => {
+                        const ss = statusSty(c.status)
+                        const ec = effColor(c.effectiveness)
+                        return (
+                          <tr key={c.id}
+                            style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none', transition: 'background 0.15s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = dm ? '#0f172a' : '#f8fafc'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '700', color: dm ? '#94a3b8' : '#374151', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                              {c.id}
+                            </td>
+                            <td style={{ ...styles.td, fontWeight: '600', color: dm ? '#f1f5f9' : '#111827', whiteSpace: 'nowrap' }}>
+                              {c.name}
+                            </td>
+                            <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>
+                              <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', background: dm ? '#1e3a5f' : '#eff6ff', color: dm ? '#93c5fd' : '#1d4ed8', border: `1px solid ${dm ? '#1d4ed8' : '#bfdbfe'}` }}>
+                                {c.domain}
+                              </span>
+                            </td>
+                            <td style={{ ...styles.td, fontSize: '12px', color: dm ? '#64748b' : '#9ca3af', whiteSpace: 'nowrap' }}>
+                              {c.framework}
+                            </td>
+                            <td style={{ ...styles.td, minWidth: '140px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ flex: 1, height: '7px', borderRadius: '999px', background: dm ? '#334155' : '#e5e7eb', overflow: 'hidden' }}>
+                                  <div style={{ height: '100%', width: `${c.effectiveness}%`, borderRadius: '999px', background: ec, transition: 'width 0.6s ease' }} />
+                                </div>
+                                <span style={{ fontSize: '13px', fontWeight: '700', color: ec, minWidth: '36px', textAlign: 'right' }}>{c.effectiveness}%</span>
+                              </div>
+                            </td>
+                            <td style={{ ...styles.td, whiteSpace: 'nowrap' }}>
+                              <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '999px', fontSize: '12px', fontWeight: '700', background: ss.bg, color: ss.color, border: `1px solid ${ss.border}` }}>
+                                {c.status}
+                              </span>
+                            </td>
+                            <td style={{ ...styles.tdTimestamp, whiteSpace: 'nowrap' }}>
+                              {c.last_assessed}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+              </div>
+            )
+          })() : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* ── Report generator ── */}
+              <div style={{ background: dm ? '#0f172a' : '#f8fafc', borderRadius: '12px', padding: '20px', border: `1px solid ${dm ? '#334155' : '#e5e7eb'}` }}>
+                <div style={{ fontSize: '12px', fontWeight: '700', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: '16px' }}>
+                  GENERATE NEW REPORT
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 120px 140px 140px auto', gap: '12px', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.6px', marginBottom: '6px' }}>REPORT TYPE</label>
+                    <select
+                      value={exportType}
+                      onChange={e => setExportType(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#1e293b' : 'white', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
+                    >
+                      {EXPORT_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.6px', marginBottom: '6px' }}>FORMAT</label>
+                    <select
+                      value={exportFormat}
+                      onChange={e => setExportFormat(e.target.value)}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#1e293b' : 'white', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none', cursor: 'pointer' }}
+                    >
+                      <option value="csv">CSV</option>
+                      <option value="html">HTML / PDF</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.6px', marginBottom: '6px' }}>FROM DATE</label>
+                    <input type="date" value={exportFrom} onChange={e => setExportFrom(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#1e293b' : 'white', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: '600', color: dm ? '#64748b' : '#9ca3af', letterSpacing: '0.6px', marginBottom: '6px' }}>TO DATE</label>
+                    <input type="date" value={exportTo} onChange={e => setExportTo(e.target.value)}
+                      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: dm ? '#1e293b' : 'white', color: dm ? '#f1f5f9' : '#111827', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }} />
+                  </div>
+                  <button
+                    onClick={handleGenerateExport}
+                    disabled={exportBusy}
+                    style={{ padding: '8px 22px', borderRadius: '8px', border: 'none', background: exportBusy ? (dm ? '#334155' : '#e5e7eb') : '#1d4ed8', color: exportBusy ? (dm ? '#64748b' : '#9ca3af') : 'white', fontSize: '13px', fontWeight: '700', cursor: exportBusy ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '7px', whiteSpace: 'nowrap', height: '38px' }}
+                  >
+                    {exportBusy ? (
+                      <>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
+                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                        </svg>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        Generate
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div style={{ marginTop: '10px', fontSize: '12px', color: dm ? '#475569' : '#9ca3af' }}>
+                  {EXPORT_TYPES.find(t => t.id === exportType)?.desc}
+                  {(exportFrom || exportTo)
+                    ? ` · Date filter: ${exportFrom || 'start'} to ${exportTo || 'now'}`
+                    : ' · No date filter — full dataset'}
+                </div>
+              </div>
+
+              {/* ── Export status table ── */}
+              {exportHistory.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '48px 20px', color: dm ? '#475569' : '#9ca3af', fontSize: '14px' }}>
+                  No exports generated yet. Use the panel above to create your first report.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        {['Report Name', 'Format', 'Requested By', 'Generated At', 'Records', 'Status', 'Download'].map(col => (
+                          <th key={col} style={styles.th}>{col}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {exportHistory.map((entry, i, arr) => {
+                        const ss =
+                          entry.status === 'completed'  ? { bg: '#d1fae5', color: '#065f46', border: '#10b981', label: 'COMPLETED' } :
+                          entry.status === 'generating' ? { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd', label: 'GENERATING' } :
+                                                          { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5', label: 'FAILED' }
+                        const fmtStyle = entry.format === 'CSV'
+                          ? { bg: dm ? '#1e3a5f' : '#eff6ff', color: dm ? '#93c5fd' : '#1d4ed8', border: dm ? '#1d4ed8' : '#bfdbfe' }
+                          : { bg: dm ? '#2e1065' : '#f5f3ff', color: dm ? '#c4b5fd' : '#7c3aed', border: dm ? '#7c3aed' : '#ddd6fe' }
+                        return (
+                          <tr key={entry.id} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${dm ? '#1e293b' : '#f3f4f6'}` : 'none' }}>
+                            <td style={{ ...styles.td, fontWeight: '600', color: dm ? '#f1f5f9' : '#111827' }}>{entry.name}</td>
+                            <td style={styles.td}>
+                              <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: '5px', fontSize: '11px', fontWeight: '700', background: fmtStyle.bg, color: fmtStyle.color, border: `1px solid ${fmtStyle.border}` }}>
+                                {entry.format}
+                              </span>
+                            </td>
+                            <td style={{ ...styles.td, color: dm ? '#93c5fd' : '#0891b2' }}>{entry.requestedBy}</td>
+                            <td style={styles.tdTimestamp}>{new Date(entry.generatedAt).toLocaleString()}</td>
+                            <td style={{ ...styles.td, color: dm ? '#94a3b8' : '#6b7280', fontVariantNumeric: 'tabular-nums' }}>
+                              {entry.status === 'generating' ? '...' : (entry.records ?? 0).toLocaleString()}
+                            </td>
+                            <td style={styles.td}>
+                              <span style={{ display: 'inline-block', padding: '3px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '700', letterSpacing: '0.4px', background: ss.bg, color: ss.color, border: `1px solid ${ss.border}` }}>
+                                {ss.label}
+                              </span>
+                            </td>
+                            <td style={styles.td}>
+                              {entry.status === 'completed' && entry.blobUrl ? (
+                                <button
+                                  onClick={() => triggerDownload(entry)}
+                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 14px', borderRadius: '7px', border: `1px solid ${dm ? '#334155' : '#d1d5db'}`, background: 'transparent', color: dm ? '#94a3b8' : '#374151', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                    <polyline points="7 10 12 15 17 10" />
+                                    <line x1="12" y1="15" x2="12" y2="3" />
+                                  </svg>
+                                  Download
+                                </button>
+                              ) : entry.status === 'failed' ? (
+                                <span style={{ fontSize: '12px', color: '#ef4444', maxWidth: '220px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={entry.error}>{entry.error || 'Failed'}</span>
+                              ) : (
+                                <span style={{ fontSize: '12px', color: dm ? '#475569' : '#d1d5db' }}>—</span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
             </div>
           )}
         </div>

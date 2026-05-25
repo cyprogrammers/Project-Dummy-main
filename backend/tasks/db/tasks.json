@@ -166,5 +166,27 @@
     "admin_notes": "High priority, attend urgently",
     "tags": [],
     "attachment_refs": []
+  },
+  {
+    "id": "task-008",
+    "title": "Email backup",
+    "description": "Backing up of emails",
+    "category": "Backup",
+    "priority": "P3",
+    "status": "completed",
+    "assigned_to_email": "jconnor@cut.ac.zw",
+    "assigned_to_name": "John Connor",
+    "assigned_by_email": "mbanda64@gmail.com",
+    "assigned_by_name": "Marrison Banda",
+    "created_at": "2026-05-25T09:00:17.190596+00:00",
+    "updated_at": "2026-05-25T09:03:00.958698+00:00",
+    "due_date": "2026-05-25T00:00:00.000Z",
+    "completed_at": "2026-05-25T09:03:00.957285+00:00",
+    "technician_notes": null,
+    "admin_notes": "Make sure that it is done by end of day",
+    "tags": [
+      "backup"
+    ],
+    "attachment_refs": []
   }
 ]
