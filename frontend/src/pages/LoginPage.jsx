@@ -19,20 +19,10 @@ export default function LoginPage({ onLogin, sessionExpiredMessage }) {
   const [error,       setError]       = useState('')
   const [loading,     setLoading]     = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
-  const [popiaScore,  setPopiaScore]  = useState('—')
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    const now = new Date()
-    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
-    fetch(`/api/v1/popia/evaluate?since=${encodeURIComponent(midnight)}`, { method: 'POST' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.overall_score != null) setPopiaScore(`${d.overall_score}%`) })
-      .catch(() => {})
   }, [])
 
   const formattedTime = currentTime.toLocaleString('en-GB', {
@@ -104,22 +94,8 @@ export default function LoginPage({ onLogin, sessionExpiredMessage }) {
 
         <p style={styles.description}>
           Continuous vulnerability scanning, automated compliance enforcement, and real-time incident
-          alerting — purpose-built for Chinhoyi University of Technology.
+          alerting.
         </p>
-
-        <div style={styles.statsGrid}>
-          {[
-            { value: '—', color: '#ef4444', label: 'Critical CVEs Active'   },
-            { value: '—', color: '#3b82f6', label: 'Endpoints Monitored'    },
-            { value: popiaScore, color: '#14b8a6', label: 'POPIA Compliance'       },
-            { value: '—', color: '#f59e0b', label: 'Open Incidents'         },
-          ].map(({ value, color, label }) => (
-            <div key={label} style={styles.statCard}>
-              <div style={{ ...styles.statValue, color }}>{value}</div>
-              <div style={styles.statLabel}>{label}</div>
-            </div>
-          ))}
-        </div>
 
         <div style={styles.statusBar}>
           <span style={styles.statusDot} />
@@ -133,7 +109,7 @@ export default function LoginPage({ onLogin, sessionExpiredMessage }) {
         </div>
 
         <p style={styles.leftFooter}>
-          © 2026 Chinhoyi University of Technology · IT Security Division. All rights reserved.
+          IT Security Division. All rights reserved.
         </p>
       </div>
 
@@ -297,10 +273,6 @@ const styles = {
   headlineWhite:{ color: 'white' },
   headlineTeal: { color: '#4ade80' },
   description:  { fontSize: '13px', color: 'rgba(255,255,255,0.8)', lineHeight: '1.6', margin: 0, maxWidth: '420px' },
-  statsGrid:    { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' },
-  statCard:     { background: 'rgba(255,255,255,0.08)', borderRadius: '10px', padding: '14px 18px', border: '1px solid rgba(255,255,255,0.1)' },
-  statValue:    { fontSize: '22px', fontWeight: '800' },
-  statLabel:    { fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginTop: '3px' },
   statusBar:    { display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', color: 'rgba(255,255,255,0.85)' },
   statusDot:    { width: '7px', height: '7px', borderRadius: '50%', background: '#4ade80', flexShrink: 0, boxShadow: '0 0 6px #4ade80' },
   badgesRow:    { display: 'flex', gap: '8px', flexWrap: 'wrap' },
