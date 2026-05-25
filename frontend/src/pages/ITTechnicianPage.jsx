@@ -291,7 +291,8 @@ export default function ITTechnicianPage({ onLogout, currentUser }) {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setTasks(data.tasks || []);
+      // API returns array directly, not wrapped in {tasks: [...]}
+      setTasks(Array.isArray(data) ? data : (data.tasks || []));
     } catch (err) {
       setTaskError(`Failed to load tasks: ${err.message}`);
     } finally {

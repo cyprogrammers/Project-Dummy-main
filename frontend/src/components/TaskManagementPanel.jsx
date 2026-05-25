@@ -337,7 +337,8 @@ export default function TaskManagementPanel({ darkMode: dm = false, currentUser 
         fetch(API).then(r => r.json()),
         fetch(`${API}/overview`).then(r => r.json()),
       ])
-      setTasks(tasksRes.tasks || [])
+      // API returns array directly, not wrapped in {tasks: [...]}
+      setTasks(Array.isArray(tasksRes) ? tasksRes : (tasksRes.tasks || []))
       setOverview(ovRes)
     } catch (err) {
       console.error('Task fetch error', err)

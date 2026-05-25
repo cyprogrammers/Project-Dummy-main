@@ -1,36 +1,42 @@
 """
-AITRMS Task Management Engine
-==============================
-Operational task assignment system.
-IT Administrators create and assign tasks to IT Technicians (and other roles).
-Technicians update status and add progress notes in real-time.
+AITRMS Task Management Engine — PostgreSQL edition
+====================================================
+Operational task assignment system backed by the shared PostgreSQL database.
+IT Administrators create and assign tasks; Technicians update status / notes.
 
-Integration — add to backend/main.py:
+Migration from JSON file:
+  Run backend/tasks/migration.sql against your aitrms database first, then
+  replace backend/tasks/task_engine.py with this file.
+
+Integration — backend/main.py (no change needed if already wired):
     from tasks.task_engine import task_router
     app.include_router(task_router)
 """
 
 import enum
-import json
 import logging
-from datetime import datetime, timezone, timedelta
-from itertools import count
-from pathlib import Path
+import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.database import AsyncSessionLocal, get_db
+from tasks.task_model import TaskCategoryDB, TaskORM, TaskPriorityDB, TaskStatusDB
 
 logger = logging.getLogger("TaskEngine")
 
-# ─── Enums ────────────────────────────────────────────────────────────────────
+# ─── Enums (Pydantic-facing — kept identical so frontend sees no change) ──────
 
 class TaskStatus(str, enum.Enum):
-    pending      = "pending"
-    in_progress  = "in_progress"
-    completed    = "completed"
-    cancelled    = "cancelled"
-    blocked      = "blocked"
+    pending     = "pending"
+    in_progress = "in_progress"
+    completed   = "completed"
+    cancelled   = "cancelled"
+    blocked     = "blocked"
 
 class TaskPriority(str, enum.Enum):
     p1 = "P1"
@@ -39,26 +45,26 @@ class TaskPriority(str, enum.Enum):
     p4 = "P4"
 
 class TaskCategory(str, enum.Enum):
-    backup    = "Backup"
-    security  = "Security"
-    database  = "Database"
-    system    = "System"
-    network   = "Network"
-    auth      = "Auth / IAM"
-    incident  = "Incident Response"
-    patch     = "Patching"
-    monitoring = "Monitoring"
-    other     = "Other"
+    backup      = "Backup"
+    security    = "Security"
+    database    = "Database"
+    system      = "System"
+    network     = "Network"
+    auth        = "Auth / IAM"
+    incident    = "Incident Response"
+    patch       = "Patching"
+    monitoring  = "Monitoring"
+    other       = "Other"
 
 # ─── Pydantic Models ──────────────────────────────────────────────────────────
 
 class Task(BaseModel):
-    id: str
-    title: str
-    description: str
-    category: TaskCategory
-    priority: TaskPriority
-    status: TaskStatus = TaskStatus.pending
+    id:                str
+    title:             str
+    description:       str
+    category:          TaskCategory
+    priority:          TaskPriority
+    status:            TaskStatus = TaskStatus.pending
     assigned_to_email: Optional[str] = None
     assigned_to_name:  Optional[str] = None
     assigned_by_email: Optional[str] = None
@@ -86,441 +92,359 @@ class TaskCreate(BaseModel):
     tags:              List[str] = []
 
 class TaskUpdate(BaseModel):
-    title:             Optional[str] = None
-    description:       Optional[str] = None
+    title:             Optional[str]         = None
+    description:       Optional[str]         = None
     category:          Optional[TaskCategory] = None
     priority:          Optional[TaskPriority] = None
-    status:            Optional[TaskStatus] = None
-    assigned_to_email: Optional[str] = None
-    assigned_to_name:  Optional[str] = None
-    assigned_by_email: Optional[str] = None
-    assigned_by_name:  Optional[str] = None
-    due_date:          Optional[str] = None
-    technician_notes:  Optional[str] = None
-    admin_notes:       Optional[str] = None
-    tags:              Optional[List[str]] = None
+    status:            Optional[TaskStatus]   = None
+    assigned_to_email: Optional[str]         = None
+    assigned_to_name:  Optional[str]         = None
+    due_date:          Optional[str]         = None
+    admin_notes:       Optional[str]         = None
+    technician_notes:  Optional[str]         = None
+    tags:              Optional[List[str]]   = None
 
 class TaskStatusUpdate(BaseModel):
-    """Lightweight update for technicians — only status and their notes."""
     status:            TaskStatus
     technician_notes:  Optional[str] = None
 
 class TaskAssign(BaseModel):
-    """Reassign an existing task to a different technician."""
     assigned_to_email: str
     assigned_to_name:  Optional[str] = None
-    assigned_by_email: Optional[str] = None
-    assigned_by_name:  Optional[str] = None
+    admin_notes:       Optional[str] = None
 
 class TaskOverview(BaseModel):
-    total:         int
-    pending:       int
-    in_progress:   int
-    completed:     int
-    blocked:       int
-    cancelled:     int
-    overdue:       int
-    unassigned:    int
-    p1_open:       int
+    total:       int
+    pending:     int
+    in_progress: int
+    completed:   int
+    cancelled:   int
+    blocked:     int
+    p1_open:     int
+    overdue:     int
 
-# ─── Seed helpers ─────────────────────────────────────────────────────────────
+# ─── Helper: ORM → Pydantic ───────────────────────────────────────────────────
 
-def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _orm_to_task(row: TaskORM) -> Task:
+    def _iso(dt) -> Optional[str]:
+        if dt is None:
+            return None
+        if isinstance(dt, datetime):
+            return dt.astimezone(timezone.utc).isoformat()
+        return str(dt)
 
-def _days_from_now(d: int) -> str:
-    return (datetime.now(timezone.utc) + timedelta(days=d)).isoformat()
+    return Task(
+        id=row.id,
+        title=row.title,
+        description=row.description,
+        category=TaskCategory(row.category.value if hasattr(row.category, "value") else row.category),
+        priority=TaskPriority(row.priority.value if hasattr(row.priority, "value") else row.priority),
+        status=TaskStatus(row.status.value if hasattr(row.status, "value") else row.status),
+        assigned_to_email=row.assigned_to_email,
+        assigned_to_name=row.assigned_to_name,
+        assigned_by_email=row.assigned_by_email,
+        assigned_by_name=row.assigned_by_name,
+        created_at=_iso(row.created_at) or "",
+        updated_at=_iso(row.updated_at) or "",
+        due_date=_iso(row.due_date),
+        completed_at=_iso(row.completed_at),
+        technician_notes=row.technician_notes,
+        admin_notes=row.admin_notes,
+        tags=row.tags or [],
+        attachment_refs=row.attachment_refs or [],
+    )
 
-def _days_ago(d: int) -> str:
-    return (datetime.now(timezone.utc) - timedelta(days=d)).isoformat()
 
-SEED_TASKS: list[dict] = [
+def _next_task_id() -> str:
+    """Short collision-resistant ID: TASK-<8 hex chars>"""
+    return f"TASK-{uuid.uuid4().hex[:8].upper()}"
+
+# ─── Seed helper (runs once on startup if table is empty) ────────────────────
+
+SEED_TASKS = [
     {
-        "id": "task-001",
-        "title": "SSL Certificate Renewal — Keycloak IAM",
-        "description": (
-            "The SSL certificate for the Keycloak identity provider expires in 3 days. "
-            "Renew via Let's Encrypt (certbot), deploy to the Keycloak node, and restart the service. "
-            "Verify login flow on staging before production."
-        ),
-        "category": "Auth / IAM",
-        "priority": "P1",
-        "status": "pending",
-        "assigned_to_email": "tech@cut.ac.zw",
-        "assigned_to_name":  "IT Technician",
-        "assigned_by_email": "itadmin@cut.ac.zw",
-        "assigned_by_name":  "System Manager",
-        "created_at":        _days_ago(1),
-        "updated_at":        _days_ago(1),
-        "due_date":          _days_from_now(3),
-        "admin_notes":       "Certificate must be renewed before midnight on the due date to avoid auth outages during peak hours.",
-        "tags":              ["ssl", "keycloak", "auth", "critical"],
-    },
-    {
-        "id": "task-002",
-        "title": "PostgreSQL WAL Log Purge — Primary Node",
-        "description": (
-            "WAL logs have accumulated and disk usage is at 87%. "
-            "Purge WAL segments older than the last 3 successful base backups. "
-            "Run VACUUM ANALYZE on large tables (cve_cache, rbac_activity_logs). "
-            "Document disk usage before and after."
-        ),
-        "category": "Database",
-        "priority": "P2",
-        "status": "in_progress",
-        "assigned_to_email": "tech@cut.ac.zw",
-        "assigned_to_name":  "IT Technician",
-        "assigned_by_email": "itadmin@cut.ac.zw",
-        "assigned_by_name":  "System Manager",
-        "created_at":        _days_ago(2),
-        "updated_at":        _days_ago(0),
-        "due_date":          _days_from_now(0),
-        "admin_notes":       "Disk at 87%, recovery window begins at 90%. Do not wait.",
-        "technician_notes":  "Started WAL purge, currently at 79%. VACUUM running on cve_cache.",
-        "tags":              ["postgres", "database", "storage", "urgent"],
-    },
-    {
-        "id": "task-003",
-        "title": "OS Patch Cycle — All Ubuntu 24 Nodes",
-        "description": (
-            "Apply all pending security patches (apt upgrade) to the 6 Ubuntu 24 nodes in the cluster. "
-            "Schedule maintenance windows per node to avoid simultaneous reboots. "
-            "Test Elasticsearch and Kafka connectivity after each reboot."
-        ),
-        "category": "Patching",
-        "priority": "P2",
-        "status": "pending",
-        "assigned_to_email": "tech@cut.ac.zw",
-        "assigned_to_name":  "IT Technician",
-        "assigned_by_email": "itadmin@cut.ac.zw",
-        "assigned_by_name":  "System Manager",
-        "created_at":        _days_ago(3),
-        "updated_at":        _days_ago(3),
-        "due_date":          _days_from_now(7),
-        "admin_notes":       "Monthly patch cycle. Coordinate with security analyst for CVE checks post-patch.",
-        "tags":              ["patching", "ubuntu", "system"],
-    },
-    {
-        "id": "task-004",
-        "title": "Elasticsearch Index Rotation & Cleanup",
-        "description": (
-            "Rotate Elasticsearch indices older than 30 days to cold storage. "
-            "Delete indices older than 90 days (filebeat-*). "
-            "Adjust refresh_interval and number_of_replicas for current indices to reduce latency."
-        ),
-        "category": "Monitoring",
-        "priority": "P3",
-        "status": "pending",
-        "assigned_to_email": "tech@cut.ac.zw",
-        "assigned_to_name":  "IT Technician",
-        "assigned_by_email": "analyst@cut.ac.zw",
-        "assigned_by_name":  "Security Analyst",
-        "created_at":        _days_ago(1),
-        "updated_at":        _days_ago(1),
-        "due_date":          _days_from_now(2),
-        "admin_notes":       "Latency spikes observed. ELK disk at 64%. Rotate before ingestion backlog grows.",
-        "tags":              ["elasticsearch", "elk", "logging", "performance"],
-    },
-    {
-        "id": "task-005",
-        "title": "Redis maxmemory Policy Review & Tune",
-        "description": (
-            "Redis is using allkeys-lru with 512MB limit. Review eviction logs and tune maxmemory to 768MB "
-            "if host allows. Verify session cache hit rate post-change. Update config in redis.conf and "
-            "document new settings."
-        ),
-        "category": "System",
-        "priority": "P3",
-        "status": "pending",
-        "assigned_to_email": "tech@cut.ac.zw",
-        "assigned_to_name":  "IT Technician",
-        "assigned_by_email": "itadmin@cut.ac.zw",
-        "assigned_by_name":  "System Manager",
-        "created_at":        _days_ago(0),
-        "updated_at":        _days_ago(0),
-        "due_date":          _days_from_now(5),
-        "tags":              ["redis", "cache", "performance"],
-    },
-    {
-        "id": "task-006",
-        "title": "Email Archive Backup — Tape Library Reconnect",
-        "description": (
-            "The Off-site Tape backup job for Email Archives failed with a connection timeout. "
-            "Diagnose the tape library connection (iSCSI or Fibre Channel), restore connectivity, "
-            "run a test backup, and verify SHA-256 hash integrity."
-        ),
+        "title": "Verify PostgreSQL backup integrity",
+        "description": "Run SHA-256 integrity check on last night's PostgreSQL dump and update the backup log.",
         "category": "Backup",
         "priority": "P1",
-        "status": "blocked",
         "assigned_to_email": "tech@cut.ac.zw",
-        "assigned_to_name":  "IT Technician",
+        "assigned_to_name": "IT Technician",
         "assigned_by_email": "itadmin@cut.ac.zw",
-        "assigned_by_name":  "System Manager",
-        "created_at":        _days_ago(0),
-        "updated_at":        _days_ago(0),
-        "due_date":          _days_from_now(1),
-        "admin_notes":       "Last successful tape backup was 48h ago. SLA requires daily. Escalate to vendor if HW issue.",
-        "technician_notes":  "Tape library not responding on port 3260. Awaiting vendor callback for iSCSI config.",
-        "tags":              ["backup", "tape", "storage", "blocked"],
+        "assigned_by_name": "System Manager",
+        "admin_notes": "Check bkp-001 — NAS destination. Escalate if hash mismatch.",
+        "tags": ["database", "critical", "backup"],
+    },
+    {
+        "title": "Patch Keycloak to latest stable",
+        "description": "Apply the latest Keycloak security patch. Test SSO login across all roles post-patch.",
+        "category": "Patching",
+        "priority": "P1",
+        "assigned_to_email": "tech@cut.ac.zw",
+        "assigned_to_name": "IT Technician",
+        "assigned_by_email": "itadmin@cut.ac.zw",
+        "assigned_by_name": "System Manager",
+        "admin_notes": "Reference: CVE-2024-3094 workaround notes in Confluence.",
+        "tags": ["auth", "patching", "keycloak"],
+    },
+    {
+        "title": "Restart Elasticsearch cluster nodes",
+        "description": "Rolling restart of ELK nodes to apply updated JVM heap settings (-Xmx4g).",
+        "category": "System",
+        "priority": "P2",
+        "assigned_to_email": "tech@cut.ac.zw",
+        "assigned_to_name": "IT Technician",
+        "assigned_by_email": "itadmin@cut.ac.zw",
+        "assigned_by_name": "System Manager",
+        "tags": ["elk", "monitoring"],
+    },
+    {
+        "title": "Review firewall rules on campus perimeter",
+        "description": "Audit iptables rules. Remove stale DROP rules older than 90 days unless justified.",
+        "category": "Network",
+        "priority": "P2",
+        "assigned_to_email": "tech@cut.ac.zw",
+        "assigned_to_name": "IT Technician",
+        "assigned_by_email": "itadmin@cut.ac.zw",
+        "assigned_by_name": "System Manager",
+        "admin_notes": "Export current ruleset to /backup/fw-rules-$(date).txt first.",
+        "tags": ["network", "security"],
+    },
+    {
+        "title": "Rotate Redis cache passwords",
+        "description": "Update Redis AUTH passwords across all environment configs. Notify relevant services.",
+        "category": "Security",
+        "priority": "P3",
+        "assigned_to_email": "tech@cut.ac.zw",
+        "assigned_to_name": "IT Technician",
+        "assigned_by_email": "itadmin@cut.ac.zw",
+        "assigned_by_name": "System Manager",
+        "tags": ["redis", "security"],
+    },
+    {
+        "title": "Set up weekly MongoDB Events backup",
+        "description": "Configure cron job for weekly MongoDB Events full export to S3. Test restore procedure.",
+        "category": "Backup",
+        "priority": "P3",
+        "assigned_to_email": "tech@cut.ac.zw",
+        "assigned_to_name": "IT Technician",
+        "assigned_by_email": "itadmin@cut.ac.zw",
+        "assigned_by_name": "System Manager",
+        "tags": ["database", "backup", "mongodb"],
     },
 ]
 
-# ─── Task Store ───────────────────────────────────────────────────────────────
 
-class TaskStore:
-    def __init__(self, storage_path: Optional[Path] = None):
-        base = Path(__file__).resolve().parent / "db"
-        self._path = storage_path or (base / "tasks.json")
-        self._tasks: dict[str, Task] = {}
-        self._counter = count(7)
-        self._load()
+async def _seed_tasks_if_empty() -> None:
+    """Insert seed tasks only when the tasks table is empty."""
+    async with AsyncSessionLocal() as db:
+        count_result = await db.execute(select(func.count(TaskORM.id)))
+        if (count_result.scalar() or 0) > 0:
+            return
 
-    # ── Persistence ───────────────────────────────────────────────────────────
-
-    def _load(self) -> None:
-        if not self._path.exists():
-            self._seed(); return
-        try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
-            for item in raw:
-                t = Task.model_validate(item)
-                self._tasks[t.id] = t
-            max_num = 6
-            for tid in self._tasks:
-                try:
-                    max_num = max(max_num, int(tid.split("-")[1]))
-                except (IndexError, ValueError):
-                    pass
-            self._counter = count(max_num + 1)
-        except Exception:
-            logger.warning("Task store corrupt; re-seeding.")
-            self._seed()
-
-    def _seed(self) -> None:
-        for t in SEED_TASKS:
-            self._tasks[t["id"]] = Task(**t)
-        self._persist()
-
-    def _persist(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(
-            json.dumps([t.model_dump() for t in self._tasks.values()], indent=2),
-            encoding="utf-8",
-        )
-
-    # ── CRUD ──────────────────────────────────────────────────────────────────
-
-    def next_id(self) -> str:
-        return f"task-{next(self._counter):03d}"
-
-    def list_tasks(
-        self,
-        assigned_to: Optional[str] = None,
-        status: Optional[TaskStatus] = None,
-        priority: Optional[TaskPriority] = None,
-        category: Optional[TaskCategory] = None,
-    ) -> List[Task]:
-        result = list(self._tasks.values())
-        if assigned_to:
-            result = [t for t in result if t.assigned_to_email == assigned_to]
-        if status:
-            result = [t for t in result if t.status == status]
-        if priority:
-            result = [t for t in result if t.priority == priority]
-        if category:
-            result = [t for t in result if t.category == category]
-        # Sort: P1 first, then by created_at desc
-        priority_order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
-        result.sort(key=lambda t: (priority_order.get(t.priority, 9), t.created_at), reverse=False)
-        result.sort(key=lambda t: priority_order.get(t.priority, 9))
-        return result
-
-    def get_task(self, task_id: str) -> Optional[Task]:
-        return self._tasks.get(task_id)
-
-    def create_task(self, task: Task) -> Task:
-        self._tasks[task.id] = task
-        self._persist()
-        return task
-
-    def update_task(self, task: Task) -> Task:
-        task.updated_at = _iso_now()
-        self._tasks[task.id] = task
-        self._persist()
-        return task
-
-    def delete_task(self, task_id: str) -> bool:
-        if task_id not in self._tasks:
-            return False
-        del self._tasks[task_id]
-        self._persist()
-        return True
-
-    # ── Aggregates ────────────────────────────────────────────────────────────
-
-    def overview(self) -> TaskOverview:
-        tasks = list(self._tasks.values())
         now = datetime.now(timezone.utc)
-
-        def is_overdue(t: Task) -> bool:
-            if t.status in (TaskStatus.completed, TaskStatus.cancelled):
-                return False
-            if not t.due_date:
-                return False
-            try:
-                due = datetime.fromisoformat(t.due_date.replace("Z", "+00:00"))
-                return due < now
-            except ValueError:
-                return False
-
-        return TaskOverview(
-            total=len(tasks),
-            pending=sum(1 for t in tasks if t.status == TaskStatus.pending),
-            in_progress=sum(1 for t in tasks if t.status == TaskStatus.in_progress),
-            completed=sum(1 for t in tasks if t.status == TaskStatus.completed),
-            blocked=sum(1 for t in tasks if t.status == TaskStatus.blocked),
-            cancelled=sum(1 for t in tasks if t.status == TaskStatus.cancelled),
-            overdue=sum(1 for t in tasks if is_overdue(t)),
-            unassigned=sum(1 for t in tasks if not t.assigned_to_email),
-            p1_open=sum(1 for t in tasks if t.priority == TaskPriority.p1 and t.status not in (TaskStatus.completed, TaskStatus.cancelled)),
-        )
+        for seed in SEED_TASKS:
+            task = TaskORM(
+                id=_next_task_id(),
+                title=seed["title"],
+                description=seed["description"],
+                category=seed["category"],  # Now using string values directly
+                priority=seed["priority"],  # Now using string values directly
+                status="pending",  # Use string instead of enum
+                assigned_to_email=seed.get("assigned_to_email"),
+                assigned_to_name=seed.get("assigned_to_name"),
+                assigned_by_email=seed.get("assigned_by_email"),
+                assigned_by_name=seed.get("assigned_by_name"),
+                admin_notes=seed.get("admin_notes"),
+                tags=seed.get("tags", []),
+                attachment_refs=[],
+            )
+            db.add(task)
+        await db.commit()
+        logger.info("Task table seeded with %d tasks.", len(SEED_TASKS))
 
 
-# ─── Singleton ────────────────────────────────────────────────────────────────
+# ─── FastAPI Router ───────────────────────────────────────────────────────────
 
-task_store = TaskStore()
-
-# ─── Router ───────────────────────────────────────────────────────────────────
-
-task_router = APIRouter(prefix="/api/v1/tasks", tags=["Task Management"])
+task_router = APIRouter(prefix="/api/v1/tasks", tags=["Task Engine"])
 
 
-# Overview -----------------------------------------------------------------------
+@task_router.on_event("startup")   # noqa — fires once
+async def _startup():
+    await _seed_tasks_if_empty()
+
+
+# ── Overview ─────────────────────────────────────────────────────────────────
 
 @task_router.get("/overview", response_model=TaskOverview)
-def get_task_overview():
-    """Dashboard summary of all task statuses."""
-    return task_store.overview()
+async def get_task_overview(db: AsyncSession = Depends(get_db)):
+    now = datetime.now(timezone.utc)
 
+    rows = (await db.execute(select(TaskORM))).scalars().all()
 
-# List / Create ------------------------------------------------------------------
+    def _status(row, s): return row.status.value == s if hasattr(row.status, "value") else row.status == s
+    def _priority(row, p): return row.priority.value == p if hasattr(row.priority, "value") else row.priority == p
 
-@task_router.get("")
-def list_tasks(
-    assigned_to: Optional[str] = Query(None, description="Filter by assignee email"),
-    status:      Optional[TaskStatus]   = Query(None),
-    priority:    Optional[TaskPriority] = Query(None),
-    category:    Optional[TaskCategory] = Query(None),
-):
-    """Return all tasks with optional filtering."""
-    tasks = task_store.list_tasks(
-        assigned_to=assigned_to,
-        status=status,
-        priority=priority,
-        category=category,
+    total       = len(rows)
+    pending     = sum(1 for r in rows if _status(r, "pending"))
+    in_progress = sum(1 for r in rows if _status(r, "in_progress"))
+    completed   = sum(1 for r in rows if _status(r, "completed"))
+    cancelled   = sum(1 for r in rows if _status(r, "cancelled"))
+    blocked     = sum(1 for r in rows if _status(r, "blocked"))
+    p1_open     = sum(1 for r in rows if _priority(r, "P1") and not _status(r, "completed") and not _status(r, "cancelled"))
+    overdue     = sum(
+        1 for r in rows
+        if r.due_date and r.due_date.replace(tzinfo=timezone.utc) < now
+        and not _status(r, "completed") and not _status(r, "cancelled")
     )
-    return {"tasks": tasks, "count": len(tasks)}
+
+    return TaskOverview(
+        total=total,
+        pending=pending,
+        in_progress=in_progress,
+        completed=completed,
+        cancelled=cancelled,
+        blocked=blocked,
+        p1_open=p1_open,
+        overdue=overdue,
+    )
 
 
-@task_router.post("", status_code=201, response_model=Task)
-def create_task(body: TaskCreate):
-    """Create and optionally assign a new task."""
-    task = Task(
-        id=task_store.next_id(),
+# ── List Tasks ────────────────────────────────────────────────────────────────
+
+@task_router.get("", response_model=List[Task])
+async def list_tasks(
+    assigned_to: Optional[str] = Query(None),
+    status:      Optional[str] = Query(None),
+    priority:    Optional[str] = Query(None),
+    category:    Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(TaskORM)
+    if assigned_to:
+        q = q.where(TaskORM.assigned_to_email == assigned_to)
+    if status:
+        q = q.where(TaskORM.status == status)
+    if priority:
+        q = q.where(TaskORM.priority == priority)
+    if category:
+        q = q.where(TaskORM.category == category)
+
+    rows = (await db.execute(q.order_by(TaskORM.created_at.desc()))).scalars().all()
+    return [_orm_to_task(r) for r in rows]
+
+
+# ── Create Task ───────────────────────────────────────────────────────────────
+
+@task_router.post("", response_model=Task, status_code=201)
+async def create_task(body: TaskCreate, db: AsyncSession = Depends(get_db)):
+    due_dt = None
+    if body.due_date:
+        try:
+            due_dt = datetime.fromisoformat(body.due_date.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid due_date format. Use ISO 8601.")
+
+    task = TaskORM(
+        id=_next_task_id(),
         title=body.title,
         description=body.description,
-        category=body.category,
-        priority=body.priority,
-        status=TaskStatus.pending,
+        category=body.category.value,  # Use string value directly
+        priority=body.priority.value,  # Use string value directly
+        status="pending",  # Use string instead of enum
         assigned_to_email=body.assigned_to_email,
         assigned_to_name=body.assigned_to_name,
         assigned_by_email=body.assigned_by_email,
         assigned_by_name=body.assigned_by_name,
-        due_date=body.due_date,
+        due_date=due_dt,
         admin_notes=body.admin_notes,
         tags=body.tags,
-        created_at=_iso_now(),
-        updated_at=_iso_now(),
+        attachment_refs=[],
     )
-    return task_store.create_task(task)
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    logger.info("Task created: %s — %s", task.id, task.title)
+    return _orm_to_task(task)
 
 
-# Single task --------------------------------------------------------------------
+# ── Get Single Task ───────────────────────────────────────────────────────────
 
 @task_router.get("/{task_id}", response_model=Task)
-def get_task(task_id: str):
-    task = task_store.get_task(task_id)
-    if not task:
+async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(TaskORM).where(TaskORM.id == task_id))).scalars().first()
+    if not row:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-    return task
+    return _orm_to_task(row)
 
+
+# ── Update Task ───────────────────────────────────────────────────────────────
 
 @task_router.patch("/{task_id}", response_model=Task)
-def update_task(task_id: str, body: TaskUpdate):
-    """Full or partial update (admin use — all fields)."""
-    task = task_store.get_task(task_id)
-    if not task:
+async def update_task(task_id: str, body: TaskUpdate, db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(TaskORM).where(TaskORM.id == task_id))).scalars().first()
+    if not row:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-    data = task.model_dump()
-    for field, value in body.model_dump(exclude_unset=True).items():
-        data[field] = value
-    return task_store.update_task(Task(**data))
 
+    update_data = body.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        if field in ("category", "priority", "status") and value is not None:
+            # Convert enum to string value
+            setattr(row, field, value.value if hasattr(value, "value") else value)
+        else:
+            setattr(row, field, value)
+
+    if "status" in update_data and update_data["status"] == "completed":
+        row.completed_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(row)
+    return _orm_to_task(row)
+
+
+# ── Delete Task ───────────────────────────────────────────────────────────────
 
 @task_router.delete("/{task_id}")
-def delete_task(task_id: str):
-    """Remove a task permanently."""
-    task = task_store.get_task(task_id)
-    if not task:
+async def delete_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(TaskORM).where(TaskORM.id == task_id))).scalars().first()
+    if not row:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-    if task.status == TaskStatus.in_progress:
-        raise HTTPException(status_code=409, detail="Cannot delete a task that is in progress.")
-    task_store.delete_task(task_id)
+    await db.delete(row)
+    await db.commit()
     return {"status": "deleted", "task_id": task_id}
 
 
-# Assign -------------------------------------------------------------------------
+# ── Reassign Task ─────────────────────────────────────────────────────────────
 
 @task_router.post("/{task_id}/assign", response_model=Task)
-def assign_task(task_id: str, body: TaskAssign):
-    """Assign or reassign a task to a technician."""
-    task = task_store.get_task(task_id)
-    if not task:
+async def assign_task(task_id: str, body: TaskAssign, db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(TaskORM).where(TaskORM.id == task_id))).scalars().first()
+    if not row:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-    data = task.model_dump()
-    data["assigned_to_email"] = body.assigned_to_email
-    data["assigned_to_name"]  = body.assigned_to_name
-    if body.assigned_by_email:
-        data["assigned_by_email"] = body.assigned_by_email
-    if body.assigned_by_name:
-        data["assigned_by_name"] = body.assigned_by_name
-    # Auto-set to pending if it was unassigned
-    if data["status"] == TaskStatus.cancelled:
-        pass  # keep cancelled
-    else:
-        data["status"] = TaskStatus.pending
-    logger.info("Task %s assigned to %s", task_id, body.assigned_to_email)
-    return task_store.update_task(Task(**data))
+    row.assigned_to_email = body.assigned_to_email
+    if body.assigned_to_name:
+        row.assigned_to_name = body.assigned_to_name
+    if body.admin_notes is not None:
+        row.admin_notes = body.admin_notes
+    await db.commit()
+    await db.refresh(row)
+    return _orm_to_task(row)
 
 
-# Status update (technician) -----------------------------------------------------
+# ── Update Status (technician endpoint) ──────────────────────────────────────
 
 @task_router.post("/{task_id}/status", response_model=Task)
-def update_task_status(task_id: str, body: TaskStatusUpdate):
-    """
-    Lightweight endpoint for technicians:
-    update status and optionally add progress notes.
-    """
-    task = task_store.get_task(task_id)
-    if not task:
+async def update_task_status(task_id: str, body: TaskStatusUpdate, db: AsyncSession = Depends(get_db)):
+    row = (await db.execute(select(TaskORM).where(TaskORM.id == task_id))).scalars().first()
+    if not row:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
-    data = task.model_dump()
-    data["status"] = body.status
+
+    row.status = body.status.value  # Use string value directly
     if body.technician_notes is not None:
-        data["technician_notes"] = body.technician_notes
+        row.technician_notes = body.technician_notes
     if body.status == TaskStatus.completed:
-        data["completed_at"] = _iso_now()
-    elif body.status != TaskStatus.completed:
-        data["completed_at"] = None   # reset if un-completing
+        row.completed_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(row)
     logger.info("Task %s status → %s", task_id, body.status)
-    return task_store.update_task(Task(**data))
+    return _orm_to_task(row)
