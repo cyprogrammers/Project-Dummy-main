@@ -37,6 +37,9 @@ from core.gdpr_evaluator import gdpr_router
 from core.popia_evaluator import popia_router
 from core.iso27001_evaluator import iso27001_router
 from core.controls_effectiveness import controls_router
+from demo.attack_simulator import attack_simulator
+from pydantic import BaseModel as PydanticBaseModel
+from typing import List as TypingList
 
 
 logging.basicConfig(level=logging.INFO)
@@ -61,6 +64,74 @@ app.include_router(popia_router)
 app.include_router(iso27001_router)
 app.include_router(controls_router)
 app.include_router(task_router)
+
+
+# Simulation API Endpoints
+class SimulationRequest(PydanticBaseModel):
+    scenario_name: str
+    user_id: str = "demo_user"
+    cluster_id: str = "cluster_admin"
+    suspicious_ip: str = "203.0.113.45"
+
+
+@app.post("/api/v1/simulation/trigger")
+async def trigger_simulation(request: SimulationRequest):
+    """
+    Trigger a security attack simulation to demonstrate automated detection and response
+
+    Available scenarios:
+    - brute_force: Brute force login attempts
+    - privilege_escalation: Unauthorized privilege escalation
+    - data_exfiltration: Large data transfer to external IP
+    - malware_execution: Suspicious process execution
+    """
+    from demo.attack_simulator import SCENARIOS
+    session = await attack_simulator.run_scenario(
+        scenario_name=request.scenario_name,
+        user_id=request.user_id,
+        cluster_id=request.cluster_id,
+        suspicious_ip=request.suspicious_ip
+    )
+    return session
+
+
+@app.get("/api/v1/simulation/sessions/{session_id}")
+async def get_simulation_session(session_id: str):
+    """Retrieve details of a specific simulation session"""
+    session = attack_simulator.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    return session
+
+
+@app.get("/api/v1/simulation/sessions")
+async def list_simulation_sessions():
+    """List all simulation sessions"""
+    return attack_simulator.list_sessions()
+
+
+@app.get("/api/v1/simulation/scenarios")
+async def list_scenarios():
+    """List all available attack scenarios"""
+    from demo.attack_simulator import SCENARIOS
+    return [
+        {
+            "id": key,
+            "name": scenario.name,
+            "description": scenario.description,
+            "mitre_technique": scenario.mitre_technique
+        }
+        for key, scenario in SCENARIOS.items()
+    ]
+
+
+@app.delete("/api/v1/simulation/sessions")
+async def clear_simulation_sessions():
+    """Clear all simulation sessions"""
+    attack_simulator.clear_sessions()
+    return {"status": "cleared"}
+
+
 # Setup Templates and Static Files
 templates = Jinja2Templates(directory="templates")
 # app.mount("/static", StaticFiles(directory="static"), name="static")

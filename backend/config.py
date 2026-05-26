@@ -12,7 +12,7 @@ OLLAMA_MODEL: str    = os.getenv("OLLAMA_MODEL", "tinyllama")
 # ─── PostgreSQL ──────────────────────────────────────────────────────────────
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:1062@localhost:5432/aitrms"
+    "postgresql+asyncpg://postgres:root@localhost:5432/aitrms"
 )
 
 # ─── Keycloak ────────────────────────────────────────────────────────────────

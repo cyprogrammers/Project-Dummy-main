@@ -12,6 +12,7 @@ import SecurityAnalystPage from './pages/SecurityAnalystPage'
 import ComplianceOfficerPage from './pages/ComplianceOfficerPage'
 import ITTechnicianPage from './pages/ITTechnicianPage'
 import SystemAuditorPage from './pages/SystemAuditorPage'
+import AutomationDemoPage from './pages/AutomationDemoPage'
 import { logout as apiLogout, getMe } from './services/authService'
 
 function App() {
@@ -19,7 +20,16 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [sessionExpired, setSessionExpired] = useState(false)
+  const [showDemo, setShowDemo] = useState(false)
   const inactivityTimer = useRef(null)
+
+  // Check if URL is /demo
+  useEffect(() => {
+    if (window.location.pathname === '/demo') {
+      setShowDemo(true)
+      setIsCheckingAuth(false)
+    }
+  }, [])
 
   // Inactivity-based auto-logout: fires after the role's session timeout with no user events
   useEffect(() => {
@@ -82,6 +92,11 @@ function App() {
     } catch (_) { /* already expired is fine */ }
     setUserRole(null)
     setCurrentUser(null)
+  }
+
+  // Show demo page if /demo route
+  if (showDemo) {
+    return <AutomationDemoPage />
   }
 
   // Show loading while checking for existing session

@@ -1,5 +1,621 @@
 [
   {
+    "storyline_id": "INC-SIM-20260526004228-0001",
+    "title": "Anomalous Behavior (8.6x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Suspicious Data Transfer - Potential Exfiltration detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-26T00:42:28.442152+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.675,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "data_exfiltration"
+    ],
+    "metrics": {
+      "detection_mse": 0.4297541379928589,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.4298",
+        "timestamp": "2026-05-26T00:42:28.442152+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (8.6x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-26T00:42:31.246131+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-26T00:42:31.246131+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260526002552-0003",
+    "title": "Anomalous Behavior (8.0x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Suspicious Data Transfer - Potential Exfiltration detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-26T00:25:52.681568+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.674999999999999,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "data_exfiltration"
+    ],
+    "metrics": {
+      "detection_mse": 0.401712030172348,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.4017",
+        "timestamp": "2026-05-26T00:25:52.681568+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (8.0x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-26T00:25:55.526605+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-26T00:25:55.526605+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260526002531-0002",
+    "title": "Anomalous Behavior (8.8x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Suspicious Data Transfer - Potential Exfiltration detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-26T00:25:31.652379+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.6750000000000007,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "data_exfiltration"
+    ],
+    "metrics": {
+      "detection_mse": 0.4398151934146881,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.4398",
+        "timestamp": "2026-05-26T00:25:31.652379+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (8.8x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-26T00:25:34.425985+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-26T00:25:34.425985+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260526002413-0001",
+    "title": "Anomalous Behavior (7.1x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Privilege Escalation - Unauthorized Admin Access detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-26T00:24:13.067198+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.675,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "privilege_escalation"
+    ],
+    "metrics": {
+      "detection_mse": 0.353702187538147,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.3537",
+        "timestamp": "2026-05-26T00:24:13.067198+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (7.1x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-26T00:24:15.870935+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-26T00:24:15.870935+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260526000321-0003",
+    "title": "Anomalous Behavior (7.9x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Privilege Escalation - Unauthorized Admin Access detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-26T00:03:21.825215+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.674999999999999,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "privilege_escalation"
+    ],
+    "metrics": {
+      "detection_mse": 0.39318785071372986,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.3932",
+        "timestamp": "2026-05-26T00:03:21.825215+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (7.9x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-26T00:03:24.540793+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-26T00:03:24.540793+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260525235415-0002",
+    "title": "Anomalous Behavior (7.7x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Unauthorized Access Attempt - Brute Force detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-25T23:54:15.200136+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.6750000000000007,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 22 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "brute_force"
+    ],
+    "metrics": {
+      "detection_mse": 0.3868470788002014,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.3868",
+        "timestamp": "2026-05-25T23:54:15.200136+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (7.7x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-25T23:54:17.938463+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-25T23:54:17.938463+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260525235336-0001",
+    "title": "Anomalous Behavior (6.8x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Malicious Code Execution - Ransomware Indicators detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-25T23:53:36.234033+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.675,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "malware_execution"
+    ],
+    "metrics": {
+      "detection_mse": 0.34104615449905396,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.3410",
+        "timestamp": "2026-05-25T23:53:36.234033+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (6.8x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-25T23:53:38.994613+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-25T23:53:38.994613+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260525234427-0004",
+    "title": "Anomalous Behavior (7.1x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Privilege Escalation detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-25T23:44:27.730881+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.6750000000000007,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "privilege_escalation"
+    ],
+    "metrics": {
+      "detection_mse": 0.3535270690917969,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.3535",
+        "timestamp": "2026-05-25T23:44:27.730881+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (7.1x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-25T23:44:30.463312+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-25T23:44:30.463312+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260525234022-0003",
+    "title": "Anomalous Behavior (7.4x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Malware Execution detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-25T23:40:22.673338+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.674999999999999,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "malware_execution"
+    ],
+    "metrics": {
+      "detection_mse": 0.3693269193172455,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.3693",
+        "timestamp": "2026-05-25T23:40:22.673338+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (7.4x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-25T23:40:25.466176+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-25T23:40:25.466176+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260525233858-0002",
+    "title": "Anomalous Behavior (7.4x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Brute Force Attack detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-25T23:38:58.817461+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.6750000000000007,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 22 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "brute_force"
+    ],
+    "metrics": {
+      "detection_mse": 0.3713509440422058,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.3714",
+        "timestamp": "2026-05-25T23:38:58.817461+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (7.4x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-25T23:39:01.556071+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-25T23:39:01.556071+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
+    "storyline_id": "INC-SIM-20260525233319-0001",
+    "title": "Anomalous Behavior (8.2x Threshold) targeting CVE-2024-DEMO",
+    "severity": "critical",
+    "status": "open",
+    "summary": "Simulated Data Exfiltration detected and analyzed by automated pipeline. T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "detected_at": "2026-05-25T23:33:19.168046+00:00",
+    "user_id": "demo_user",
+    "cluster_id": "cluster_admin",
+    "source_ip": "203.0.113.45",
+    "mitre_tactic": "T1059 - Command and Scripting Interpreter (Mock Fallback)",
+    "confidence": 0.95,
+    "risk_delta": 3.675,
+    "recommended_actions": [
+      "Isolate user session for demo_user",
+      "Review RBAC logs for lateral movement attempts",
+      "Patch system for mentioned CVEs if applicable"
+    ],
+    "containment_actions": [
+      "iptables -A INPUT -s 203.0.113.45 -p tcp --dport 443 -j DROP"
+    ],
+    "tags": [
+      "simulation",
+      "automated",
+      "data_exfiltration"
+    ],
+    "metrics": {
+      "detection_mse": 0.41048768162727356,
+      "detection_threshold": 0.05,
+      "detection_layer": "LSTM-Autoencoder",
+      "automation_percentage": 100.0
+    },
+    "steps": [
+      {
+        "phase": "Detection",
+        "label": "Anomaly Detected",
+        "detail": "Neural network detected anomaly with MSE 0.4105",
+        "timestamp": "2026-05-25T23:33:19.168046+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Assessment",
+        "label": "Threat Analyzed",
+        "detail": "AI identified: Anomalous Behavior (8.2x Threshold) targeting CVE-2024-DEMO",
+        "timestamp": "2026-05-25T23:33:21.950588+00:00",
+        "status": "completed"
+      },
+      {
+        "phase": "Response",
+        "label": "Actions Generated",
+        "detail": "4 automated response actions created",
+        "timestamp": "2026-05-25T23:33:21.950588+00:00",
+        "status": "completed"
+      }
+    ]
+  },
+  {
     "storyline_id": "SR-0010",
     "title": "Anomalous Behavior (17.4x Threshold) targeting CVE-2024-3094",
     "severity": "critical",

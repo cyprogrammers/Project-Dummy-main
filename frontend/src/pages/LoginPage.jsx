@@ -75,37 +75,34 @@ export default function LoginPage({ onLogin, sessionExpiredMessage }) {
     <div style={styles.wrapper}>
       {/* Left Panel */}
       <div style={styles.leftPanel}>
-        <div style={styles.logoRow}>
-          <div style={styles.logoIcon}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <div>
-            <div style={styles.logoName}>AITRMS</div>
-            <div style={styles.logoSub}>Automated IT Risk Management</div>
+        <div style={styles.brandPanel}>
+          <div style={styles.brandCircle}>
+            <img src={logo} alt="ARM System" style={styles.brandLogo} />
           </div>
         </div>
 
-        <div style={styles.headline}>
-          <span style={styles.headlineWhite}>Secure Your{'\n'}University's{'\n'}</span>
-          <span style={styles.headlineTeal}>Digital Infrastructure</span>
+        <div style={styles.leftContent}>
+          <div style={styles.headline}>
+            <span style={styles.headlineWhite}>Secure Your{'\n'}University's{'\n'}</span>
+            <span style={styles.headlineTeal}>Digital Infrastructure</span>
+          </div>
+
+          <p style={styles.description}>
+            Continuous vulnerability scanning, automated compliance enforcement, and real-time incident
+            alerting.
+          </p>
         </div>
 
-        <p style={styles.description}>
-          Continuous vulnerability scanning, automated compliance enforcement, and real-time incident
-          alerting.
-        </p>
-
-        <div style={styles.statusBar}>
-          <span style={styles.statusDot} />
-          <span>All systems operational &nbsp;·&nbsp; {formattedTime}</span>
-        </div>
-
-        <div style={styles.badgesRow}>
-          {['GDPR', 'POPIA', 'ISO 27001', 'TLS 1.3'].map(b => (
-            <span key={b} style={styles.badge}>{b}</span>
-          ))}
+        <div style={styles.leftMeta}>
+          <div style={styles.statusBar}>
+            <span style={styles.statusDot} />
+            <span>All systems operational &nbsp;·&nbsp; {formattedTime}</span>
+          </div>
+          <div style={styles.badgesRow}>
+            {['GDPR', 'POPIA', 'ISO 27001', 'TLS 1.3'].map(b => (
+              <span key={b} style={styles.badge}>{b}</span>
+            ))}
+          </div>
         </div>
 
         <p style={styles.leftFooter}>
@@ -116,9 +113,8 @@ export default function LoginPage({ onLogin, sessionExpiredMessage }) {
       {/* Right Panel */}
       <div style={styles.rightPanel}>
         <div style={styles.card}>
-          {/* Logo */}
-          <div style={styles.lockIconWrapper}>
-            <img src={logo} alt="CUT Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <div style={styles.formLogoRing}>
+            <img src={logo} alt="ARM System" style={styles.formLogo} />
           </div>
 
           {!mfaStep ? (
@@ -260,26 +256,28 @@ export default function LoginPage({ onLogin, sessionExpiredMessage }) {
   )
 }
 
-// ── Styles (unchanged from original) ─────────────────────────────────────────
+// ── Styles ─────────────────────────────────────────
 const styles = {
   wrapper:      { display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: "'Inter', 'Segoe UI', sans-serif" },
-  leftPanel:    { width: '48%', background: 'linear-gradient(160deg, #0f1f5c 0%, #1a3a8f 100%)', padding: '28px 44px', display: 'flex', flexDirection: 'column', gap: '16px', color: 'white', overflow: 'hidden' },
-  logoRow:      { display: 'flex', alignItems: 'center', gap: '12px' },
-  logoIcon:     { width: '44px', height: '44px', background: 'rgba(255,255,255,0.15)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  logoName:     { fontSize: '18px', fontWeight: '700', lineHeight: '1.2' },
-  logoSub:      { fontSize: '12px', color: 'rgba(255,255,255,0.7)' },
+  leftPanel:    { width: '48%', background: 'linear-gradient(160deg, #07152f 0%, #0f2f74 56%, #1565c0 100%)', padding: '34px 48px', display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', gap: '18px', color: 'white', overflow: 'hidden' },
+  brandPanel:   { width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  brandCircle:  { width: 'clamp(190px, 24vw, 250px)', height: 'clamp(190px, 24vw, 250px)', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.98)', border: '5px solid rgba(255,255,255,0.52)', boxShadow: '0 22px 56px rgba(3, 18, 52, 0.32)', flexShrink: 0 },
+  brandLogo:    { width: '112%', height: '112%', objectFit: 'cover', display: 'block' },
+  leftContent:  { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '20px', flexShrink: 0 },
   headline:     { fontSize: '28px', fontWeight: '800', lineHeight: '1.25', whiteSpace: 'pre-line' },
   headlineWhite:{ color: 'white' },
   headlineTeal: { color: '#4ade80' },
   description:  { fontSize: '13px', color: 'rgba(255,255,255,0.8)', lineHeight: '1.6', margin: 0, maxWidth: '420px' },
+  leftMeta:     { display: 'flex', flexDirection: 'column', gap: '18px', flexShrink: 0 },
   statusBar:    { display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', color: 'rgba(255,255,255,0.85)' },
   statusDot:    { width: '7px', height: '7px', borderRadius: '50%', background: '#4ade80', flexShrink: 0, boxShadow: '0 0 6px #4ade80' },
   badgesRow:    { display: 'flex', gap: '8px', flexWrap: 'wrap' },
   badge:        { background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px', padding: '3px 10px', fontSize: '11px', color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
-  leftFooter:   { fontSize: '11px', color: 'rgba(255,255,255,0.45)', marginTop: 'auto', margin: 0 },
+  leftFooter:   { fontSize: '11px', color: 'rgba(255,255,255,0.45)', margin: 0 },
   rightPanel:   { flex: 1, background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 28px', overflow: 'hidden' },
-  card:         { background: 'white', borderRadius: '18px', padding: '28px 36px', width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.07)' },
-  lockIconWrapper:{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px', background: 'white', border: '2px solid #e5e7eb', flexShrink: 0 },
+  card:         { background: 'white', borderRadius: '16px', padding: '28px 36px', width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.07)' },
+  formLogoRing: { width: '82px', height: '82px', borderRadius: '50%', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px', background: '#ffffff', border: '3px solid #bfdbfe', boxShadow: '0 10px 26px rgba(29, 78, 216, 0.14)', flexShrink: 0 },
+  formLogo:     { width: '118%', height: '118%', objectFit: 'cover', display: 'block' },
   cardTitle:    { fontSize: '22px', fontWeight: '700', color: '#111827', margin: '0 0 4px 0' },
   cardSubtitle: { fontSize: '13px', color: '#6b7280', margin: '0 0 14px 0', textAlign: 'center' },
   sessionBanner:{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 12px', width: '100%', boxSizing: 'border-box', marginBottom: '16px' },
